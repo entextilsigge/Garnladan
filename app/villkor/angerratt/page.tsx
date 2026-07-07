@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Ångerrätt",
   description:
     "Så fungerar din 14 dagars ångerrätt hos Garnladan — och en ifyllbar ångerblankett.",
+  alternates: { canonical: "/villkor/angerratt" },
 };
 
 export default function AngerrattPage() {

@@ -35,6 +35,15 @@ innan sajten är på riktigt igång.
 | `/kassa` | Checkout i steg: leverans → betalning → bekräftelse |
 | `/admin` | Adminpanel: produkt-CRUD, lager, orderhantering (lösenordsskyddad) |
 
+## SEO
+
+- **`/sitemap.xml`** ([`app/sitemap.ts`](app/sitemap.ts)) — genereras automatiskt av Next.js. Innehåller alla statiska sidor (start, produktlista, villkor, ångerrätt, integritetspolicy) och alla produktsidor dynamiskt från produktdatan — nya produkter dyker upp här utan kodändring.
+- **`/robots.txt`** ([`app/robots.ts`](app/robots.ts)) — tillåter allt utom `/admin` och `/api`, pekar på sitemapen.
+- **Metadata per sida**: varje publik sida har en egen, relevant `<title>`/beskrivning (inte bara root-layoutens default). Produktsidor genererar titel/beskrivning från produktens eget namn, tagline och specifikationer (`generateMetadata` i [`app/produkt/[slug]/page.tsx`](app/produkt/%5Bslug%5D/page.tsx)). Sidor med personligt/icke-indexerbart innehåll (`/kassa`, `/varukorg`, `/kassa/bekraftelse`, `/admin`) har `robots: { index: false }`.
+- **Canonical URLs** (`alternates.canonical`) satta per sida — särskilt viktigt för produktsidor och `/produkter`, som båda kan nås med extra querysträngar (UTM-attribution, filter/sortering); canonical pekar alltid på den rena bas-URL:en.
+- **Open Graph/Twitter-kort**: [`app/opengraph-image.tsx`](app/opengraph-image.tsx) genererar en generell varumärkesbild (via `next/og`) som används av alla sidor som inte har en egen. Produktsidor har sin egen [`app/produkt/[slug]/opengraph-image.tsx`](app/produkt/%5Bslug%5D/opengraph-image.tsx): visar produktens uppladdade foto om ett finns, annars ett enkelt kort i produktens egen kulör (samma idé som SVG-fallbacken på sajten, fast som ett statiskt OG-kort). `metadataBase` sätts i [`app/layout.tsx`](app/layout.tsx) från [`lib/seo.ts`](lib/seo.ts) (samma `NEXT_PUBLIC_SITE_URL` som mejlens länkar använder) så relativa OG-bild-URL:er löses upp mot rätt domän.
+- **Favicon**: [`app/icon.svg`](app/icon.svg) — en egen, varumärkesanpassad platshållare (stiliserad garnhärva i tegel-rött), inte Next.js standardikon.
+
 ## Datalagring
 
 Det finns ingen databas ännu — sortiment, ordrar och nyhetsbrevsprenumeranter
@@ -116,6 +125,14 @@ httpOnly-cookie, giltig i 8 timmar.
   "Återbetalningar" nedan.
 - **Statistik**: försäljning, lönsamhet, produktprestanda, kunder och
   marknadsföring — se eget avsnitt nedan.
+- **Databackup** (Inställningar-fliken): "Ladda ner backup" zippar alla
+  JSON-datafiler i `data/` (produkter, ordrar, kampanjer,
+  nyhetsbrevsprenumeranter, inställningar) till en nedladdningsbar fil
+  `garnladan-backup-ÅÅÅÅ-MM-DD.zip` ([`app/api/admin/backup/route.ts`](app/api/admin/backup/route.ts)).
+  Helt manuellt — admin sparar filen själv (t.ex. i Google Drive); ingen
+  schemalagd eller molnbaserad backup i det här skedet, det kräver nya
+  konton/tokens. En påminnelsetext bredvid knappen uppmanar till regelbunden
+  nedladdning, särskilt innan större ändringar.
 
 ## Statistik / analytics (`/admin` → Statistik-fliken)
 

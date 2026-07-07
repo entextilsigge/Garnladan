@@ -4,6 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Allmänna villkor",
   description: "Köpvillkor för Garnladan: leverans, betalning, reklamationsrätt och tvistlösning.",
+  alternates: { canonical: "/villkor" },
 };
 
 export default function VillkorPage() {

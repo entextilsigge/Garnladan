@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Newsletter from "@/components/Newsletter";
 import ProductCard from "@/components/ProductCard";
@@ -10,6 +11,10 @@ import {
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const HERO_SKEINS: { slug: string; colorIndex: number; className: string }[] = [
   { slug: "faro-svensk-ull", colorIndex: 0, className: "rotate-[-6deg]" },

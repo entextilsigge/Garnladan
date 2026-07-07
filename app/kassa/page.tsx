@@ -3,6 +3,11 @@ import CheckoutFlow from "@/components/CheckoutFlow";
 
 export const metadata: Metadata = {
   title: "Kassa",
+  description: "Slutför ditt köp hos Garnladan — leverans, betalning och bekräftelse.",
+  alternates: { canonical: "/kassa" },
+  // Checkout-sidan har inget eget innehåll värt att indexera och innehåller
+  // en kunds pågående köp — ska inte visas i sökresultat.
+  robots: { index: false, follow: false },
 };
 
 export default function CheckoutPage() {

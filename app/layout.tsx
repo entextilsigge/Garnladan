@@ -7,6 +7,7 @@ import UtmCapture from "@/components/UtmCapture";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
 import { CartProvider } from "@/lib/cart";
 import { SettingsProvider } from "@/lib/settings";
+import { SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
 // Fraunces: en varm, "mjukt gammaldags" display-serif med hög karaktär —
@@ -24,13 +25,31 @@ const karla = Karla({
   display: "swap",
 });
 
+const DEFAULT_DESCRIPTION =
+  "Garn och stickmaterial online, med rötterna i Tygladan i Vänersborg. Svensk ull, ekologisk bomull, lyxig alpacka och mohair. Fri frakt över 499 kr.";
+
 export const metadata: Metadata = {
+  // Gör att relativa URL:er i openGraph/twitter-bilder och alternates.canonical
+  // (satta per sida) löses upp mot rätt domän. Sätt NEXT_PUBLIC_SITE_URL i
+  // produktion — se lib/seo.ts / .env.example.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Garnladan — garn & stickmaterial online",
     template: "%s · Garnladan",
   },
-  description:
-    "Garn och stickmaterial online, med rötterna i Tygladan i Vänersborg. Svensk ull, ekologisk bomull, lyxig alpacka och mohair. Fri frakt över 499 kr.",
+  description: DEFAULT_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Garnladan",
+    locale: "sv_SE",
+    title: "Garnladan — garn & stickmaterial online",
+    description: DEFAULT_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Garnladan — garn & stickmaterial online",
+    description: DEFAULT_DESCRIPTION,
+  },
 };
 
 export default function RootLayout({

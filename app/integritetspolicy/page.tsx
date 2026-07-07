@@ -4,6 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Integritetspolicy",
   description: "Hur Garnladan samlar in, använder och skyddar dina personuppgifter.",
+  alternates: { canonical: "/integritetspolicy" },
 };
 
 export default function IntegritetspolicyPage() {

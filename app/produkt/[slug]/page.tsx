@@ -16,9 +16,21 @@ export async function generateMetadata(
   const params = await props.params;
   const product = getProductBySlug(params.slug);
   if (!product) return { title: "Produkten hittades inte" };
+  const title = `${product.name} — ${CATEGORY_LABELS[product.category]}`;
+  const description = `${product.tagline}. ${product.composition}, ${product.meterage} m / ${product.grams} g, rek. sticka ${product.needleSize}. Köp hos Garnladan — fri frakt över 499 kr.`;
   return {
-    title: `${product.name} — ${CATEGORY_LABELS[product.category]}`,
-    description: `${product.tagline}. ${product.composition}, ${product.meterage} m / ${product.grams} g, rek. sticka ${product.needleSize}. Köp hos Garnladan — fri frakt över 499 kr.`,
+    title,
+    description,
+    // Egen canonical (inte bara ärvd) eftersom produktsidan även nås med
+    // UTM-querysträngar (?utm_source=…) för marknadsföringsattribution —
+    // canonical pekar alltid på den rena URL:en utan dem.
+    alternates: { canonical: `/produkt/${product.slug}` },
+    // Måste sättas explicit — annars ärvs root layoutens openGraph/twitter
+    // rakt av (inklusive dess title/description), eftersom Next slår ihop
+    // metadata-objekt nyckel för nyckel mellan segment. Bilden kommer
+    // automatiskt från opengraph-image.tsx i samma route-segment.
+    openGraph: { title, description },
+    twitter: { title, description },
   };
 }
 

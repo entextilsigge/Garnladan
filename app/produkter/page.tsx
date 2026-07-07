@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: "Allt garn — sortiment",
   description:
     "Utforska hela Garnladans sortiment: svensk ull, ekologisk bomull, sockgarn och exklusiva kvaliteter som mohair och kashmir. Filtrera på material, tjocklek och färg.",
+  // Sidan kan nås med filter-/sorterings-querysträngar (?kategori=…&sort=…)
+  // — canonical pekar alltid på bas-URL:en så de inte räknas som separat
+  // innehåll.
+  alternates: { canonical: "/produkter" },
 };
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[];

@@ -1,5 +1,6 @@
 import type { Order } from "@/lib/data/orderStore";
 import { calculateVatAmount } from "@/lib/format";
+import { SITE_URL } from "@/lib/seo";
 
 // ---------------------------------------------------------------------------
 // Bekräftelsemejl via Resend (https://resend.com).
@@ -13,11 +14,6 @@ import { calculateVatAmount } from "@/lib/format";
 // ---------------------------------------------------------------------------
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-
-// Länken i mejlet till ångerrättssidan behöver en absolut URL eftersom
-// mejlet läses utanför vår egen app. Sätt NEXT_PUBLIC_SITE_URL i
-// produktion — se .env.example.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://garnladan.se";
 
 // OBS: detta URL-format kunde inte slutgiltigt bekräftas mot PostNords
 // live-spårningstjänst i den här sessionen (deras publika spårningssida är
