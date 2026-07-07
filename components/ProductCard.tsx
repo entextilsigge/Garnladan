@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import YarnImage from "@/components/YarnImage";
 import { formatPrice } from "@/lib/format";
@@ -11,6 +12,10 @@ export default function ProductCard({
   priority?: boolean;
 }) {
   const allSoldOut = product.colorways.every((c) => c.stock <= 0);
+  // Uppladdad Blob-bild optimeras via next/image (vitlistad host i
+  // next.config.mjs). Den äldre fritext-URL-overriden kan peka på vilken
+  // host som helst, så den körs som vanlig <img> istället.
+  const uploadedImageUrl = product.images?.[0]?.url;
 
   return (
     <Link
@@ -18,7 +23,16 @@ export default function ProductCard({
       className="group flex flex-col overflow-hidden rounded-2xl bg-white/70 shadow-mjuk ring-1 ring-kol/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lyft"
     >
       <div className="relative aspect-square overflow-hidden">
-        {product.imageUrl ? (
+        {uploadedImageUrl ? (
+          <Image
+            src={uploadedImageUrl}
+            alt={product.name}
+            fill
+            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+            priority={priority}
+            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.045]"
+          />
+        ) : product.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.imageUrl}

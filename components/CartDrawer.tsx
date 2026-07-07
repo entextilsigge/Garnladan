@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import YarnImage from "@/components/YarnImage";
+import ProductLineThumb from "@/components/ProductLineThumb";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import { useSettings } from "@/lib/settings";
@@ -86,10 +86,9 @@ export default function CartDrawer() {
                     className="flex gap-4 rounded-2xl bg-white/70 p-3 ring-1 ring-kol/5"
                   >
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl">
-                      <YarnImage
+                      <ProductLineThumb
+                        product={line.product}
                         colorway={line.colorway}
-                        seed={line.product.slug}
-                        band={false}
                         className="h-full w-full"
                       />
                     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ProductImages from "@/components/admin/ProductImages";
 import {
   CATEGORY_LABELS,
   COLOR_GROUP_SWATCHES,
@@ -361,6 +362,16 @@ export default function ProductForm({
                 Om satt visas denna riktiga bild istället för den genererade
                 garnillustrationen, överallt på sajten.
               </p>
+            </div>
+            <div className="sm:col-span-2">
+              {product ? (
+                <ProductImages productId={product.id} initialImages={product.images ?? []} />
+              ) : (
+                <p className="rounded-xl bg-linne/60 px-4 py-3 text-xs text-mull">
+                  Spara produkten först — sedan kan du öppna den igen här för att
+                  ladda upp riktiga produktbilder.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input

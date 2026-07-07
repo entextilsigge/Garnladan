@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { Category, Product } from "@/lib/products";
+import type { Category, Product, ProductImage } from "@/lib/products";
 // Kompileringstida startdata — samma innehåll som data/products.json hade vid
 // byggtillfället. Fungerar som fallback om JSON-filen på disk saknas eller
 // inte går att tolka (t.ex. första körningen i en ny miljö).
@@ -135,4 +135,51 @@ export function deleteProduct(id: string): boolean {
   if (next.length === all.length) return false;
   writeAll(next);
   return true;
+}
+
+/** Lägger till en nyuppladdad bild sist i galleriet (blir huvudbild om det är den första). */
+export function addProductImage(id: string, image: ProductImage): Product | null {
+  const all = readAll();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  const updated: Product = { ...all[idx], images: [...(all[idx].images ?? []), image] };
+  all[idx] = updated;
+  writeAll(all);
+  return updated;
+}
+
+/**
+ * Ersätter hela bildordningen (t.ex. efter upp/ner-flytt eller "gör till
+ * huvudbild" — index 0 blir alltid huvudbild). Tar bara emot id-ordningen,
+ * inte hela objekten, så anroparen inte kan smyga in manipulerade URL:er.
+ */
+export function reorderProductImages(id: string, orderedIds: string[]): Product | null {
+  const all = readAll();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  const current = all[idx].images ?? [];
+  const byId = new Map(current.map((img) => [img.id, img]));
+  const reordered = orderedIds.map((imgId) => byId.get(imgId)).filter((img): img is ProductImage => Boolean(img));
+  if (reordered.length !== current.length) return null;
+  const updated: Product = { ...all[idx], images: reordered };
+  all[idx] = updated;
+  writeAll(all);
+  return updated;
+}
+
+/** Tar bort en bildreferens ur produkten och returnerar den borttagna bilden (för Blob-radering) tillsammans med produkten. */
+export function removeProductImage(
+  id: string,
+  imageId: string
+): { product: Product; removed: ProductImage } | null {
+  const all = readAll();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  const current = all[idx].images ?? [];
+  const removed = current.find((img) => img.id === imageId);
+  if (!removed) return null;
+  const updated: Product = { ...all[idx], images: current.filter((img) => img.id !== imageId) };
+  all[idx] = updated;
+  writeAll(all);
+  return { product: updated, removed };
 }

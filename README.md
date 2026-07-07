@@ -7,7 +7,7 @@ Byggd med **Next.js (App Router), TypeScript och Tailwind CSS**. Helt på svensk
 
 ```bash
 npm install
-cp .env.example .env.local   # sätt ADMIN_PASSWORD (valfritt: RESEND_API_KEY)
+cp .env.example .env.local   # sätt ADMIN_PASSWORD (valfritt: RESEND_API_KEY, BLOB_READ_WRITE_TOKEN)
 npm run dev                  # http://localhost:3000
 ```
 
@@ -57,9 +57,44 @@ filer mot en riktig databas — inget annat i kodbasen behöver röras.
 
 Produktbilderna genereras som SVG-illustrationer av
 [`components/YarnImage.tsx`](components/YarnImage.tsx) utifrån varje
-färgvariants hexkod. Varje produkt kan även få en `imageUrl`-override i admin
-(fältet "Bild-URL") — är den satt visas ett riktigt foto istället, överallt på
-sajten, utan att röra resten av bildsystemet.
+färgvariants hexkod. En produkt kan få riktiga foton uppladdade i admin (se
+"Produktbilder / Vercel Blob" nedan) — då visas första bilden istället för
+SVG:n, överallt på sajten. Det äldre `imageUrl`-fältet ("Bild-URL", en
+fritextlänk utan uppladdning eller radering) finns kvar för bakåtkompatibilitet
+men används bara om inga bilder laddats upp.
+
+## Produktbilder / Vercel Blob
+
+Uppladdade produktfoton lagras i **Vercel Blob**, inte på lokal disk — precis
+som JSON-datalagret ovan är serverless-filsystemet tillfälligt i produktion,
+så lokala uppladdningar skulle försvinna mellan requests på Vercel.
+
+**Så aktiverar du det (en gång per projekt):**
+
+1. Gå till projektet i **Vercel Dashboard**.
+2. Öppna fliken **Storage** → **Create Database** → välj **Blob**.
+3. Ge storet ett namn och koppla det till det här projektet ("Connect Project").
+   Detta sätter automatiskt miljövariabeln `BLOB_READ_WRITE_TOKEN` för
+   projektets miljöer (Production/Preview/Development) i Vercel.
+4. För att uppladdning ska fungera lokalt också: kör `vercel env pull
+   .env.local` (eller kopiera värdet manuellt från Dashboard) så att
+   `BLOB_READ_WRITE_TOKEN` finns i din `.env.local`. Vercel Blob fungerar
+   utmärkt från `npm run dev` så länge token finns satt — ingen lokal emulator
+   behövs.
+
+Utan `BLOB_READ_WRITE_TOKEN` fungerar hela sajten och bygget som vanligt —
+admin visar bara ett tydligt felmeddelande om man försöker ladda upp en bild.
+
+**Var i koden:**
+
+- [`app/api/admin/products/[id]/images/route.ts`](app/api/admin/products/%5Bid%5D/images/route.ts) — POST (ladda upp), PATCH (ändra ordning/huvudbild)
+- [`app/api/admin/products/[id]/images/[imageId]/route.ts`](app/api/admin/products/%5Bid%5D/images/%5BimageId%5D/route.ts) — DELETE (tar bort både referensen och filen i Blob)
+- [`components/admin/ProductImages.tsx`](components/admin/ProductImages.tsx) — admin-UI (uppladdning, förhandsgranskning, ordning, huvudbild, radering)
+- Stöds format: PNG (inkl. transparens), JPG, WebP — max 8 MB per fil.
+- En produkt utan uppladdad bild visar alltid SVG-fallbacken — ingen produkt
+  saknar någonsin bild helt.
+- Bilder kopplas till produkten, inte till enskilda färgvarianter — foto per
+  färgvariant är en separat, mindre utökning om det behövs senare.
 
 ## Admin
 
@@ -69,7 +104,8 @@ httpOnly-cookie, giltig i 8 timmar.
 
 - **Produkter**: lägg till, redigera och ta bort produkter i ett formulär
   (namn, pris, beskrivning, material, garntjocklek, löpmeter, stickfasthet,
-  tvättråd, bild-URL). Varje färgvariant har ett eget redigerbart lagerantal.
+  tvättråd, bild-URL) samt ladda upp riktiga produktfoton (se "Produktbilder /
+  Vercel Blob" ovan). Varje färgvariant har ett eget redigerbart lagerantal.
 - **Lager**: en färgvariant med 0 i lager visas som "Slut i lager" på
   produktsidan och går inte att lägga i varukorgen (kollas både i UI och i
   varukorgslogiken).

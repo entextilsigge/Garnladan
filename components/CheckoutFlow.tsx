@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import YarnImage from "@/components/YarnImage";
+import ProductLineThumb from "@/components/ProductLineThumb";
 import StripePaymentStep from "@/components/checkout/StripePaymentStep";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
@@ -497,10 +497,9 @@ export default function CheckoutFlow() {
               className="flex items-center gap-3"
             >
               <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl">
-                <YarnImage
+                <ProductLineThumb
+                  product={line.product}
                   colorway={line.colorway}
-                  seed={line.product.slug}
-                  band={false}
                   className="h-full w-full"
                 />
               </div>

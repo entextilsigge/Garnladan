@@ -37,6 +37,18 @@ export type ColorGroup =
   | "blå"
   | "lila";
 
+export interface ProductImage {
+  id: string;
+  /** Publik Blob-URL, visas direkt via next/image */
+  url: string;
+  /**
+   * Blob-pathname (t.ex. "products/p_abc123/xyz.png") — krävs för att kunna
+   * radera själva filen ur Blob-storage vid borttagning, inte bara
+   * referensen i produktdatan.
+   */
+  pathname: string;
+}
+
 export interface Colorway {
   /** Färgnamn som visas för kund, t.ex. "Tegelröd" */
   name: string;
@@ -87,11 +99,29 @@ export interface Product {
   /** 0–100, används för sortering på popularitet */
   popularity: number;
   /**
-   * Valfri override: en riktig produktbild-URL. Om satt visas denna bilden
-   * istället för den genererade garnillustrationen (se YarnImage.tsx),
-   * överallt på sajten. Sätts i admin per produkt.
+   * Äldre, manuell override: en riktig produktbild-URL inklistrad direkt i
+   * admin (inget filuppladdnings-flöde, ingen radering av bakomliggande
+   * fil). Bevaras för bakåtkompatibilitet men ersätts i praktiken av
+   * `images` — se getPrimaryImageUrl().
    */
   imageUrl?: string;
+  /**
+   * Uppladdade produktfoton (Vercel Blob), ersätter i tur och ordning
+   * `imageUrl`-fältet ovan. Första bilden i listan är huvudbild (visas i
+   * produktkort/kort-vyer), resten är galleribilder på produktsidan.
+   * Ordningen i arrayen styr både galleriordning och vilken som är huvudbild
+   * — att flytta en bild till index 0 gör den till huvudbild.
+   */
+  images?: ProductImage[];
+}
+
+/**
+ * Vilken bild-URL som ska visas för produkten istället för den genererade
+ * SVG-illustrationen, om någon. Prioritetsordning: uppladdat foto (images[0])
+ * > äldre imageUrl-override > inget (SVG-fallback används).
+ */
+export function getPrimaryImageUrl(product: Product): string | undefined {
+  return product.images?.[0]?.url || product.imageUrl || undefined;
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import YarnImage from "@/components/YarnImage";
 import { useCart } from "@/lib/cart";
@@ -49,8 +50,43 @@ export default function ProductDetail({ product }: { product: Product }) {
     <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
       {/* ------------------------------------------------------- Galleri -- */}
       <div>
-        {product.imageUrl ? (
+        {product.images && product.images.length > 0 ? (
+          <>
+            <div className="relative aspect-square overflow-hidden rounded-3xl shadow-mjuk ring-1 ring-kol/5">
+              <Image
+                key={product.images[activeImage]?.id}
+                src={product.images[activeImage]?.url ?? product.images[0].url}
+                alt={product.name}
+                fill
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                priority
+                className="object-cover"
+              />
+            </div>
+            {product.images.length > 1 && (
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {product.images.map((img, i) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setActiveImage(i)}
+                    className={`relative aspect-square overflow-hidden rounded-2xl ring-2 transition-all ${
+                      activeImage === i
+                        ? "ring-tegel"
+                        : "ring-transparent opacity-70 hover:opacity-100"
+                    }`}
+                    aria-label={`Visa bild ${i + 1}`}
+                  >
+                    <Image src={img.url} alt="" fill sizes="200px" className="object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : product.imageUrl ? (
           <div className="overflow-hidden rounded-3xl shadow-mjuk ring-1 ring-kol/5">
+            {/* Äldre manuell URL-override, godtycklig extern host — kan inte
+                köras genom next/image utan att den vitlistas i
+                next.config.mjs, så en vanlig <img> används här. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={product.imageUrl}
