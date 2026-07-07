@@ -1,22 +1,20 @@
 import { NextResponse } from "next/server";
 import { consumeSession } from "@/lib/data/checkoutSessionStore";
-import { createOrder, type Order } from "@/lib/data/orderStore";
 import { sendOrderConfirmationEmail } from "@/lib/email";
-import { SHIPPING_OPTIONS } from "@/lib/checkout";
+import { createOrderFromSession, generateOrderId } from "@/lib/orders";
 
 // ---------------------------------------------------------------------------
 // MOCK: bekräfta betalning — lyckas alltid och genererar ett ordernummer.
 //
-// Vid riktig integration ersätts detta med verifiering hos
-// betalleverantören, t.ex:
+// Körs bara när Stripe INTE är konfigurerat (se lib/stripe.ts och
+// components/CheckoutFlow.tsx, som väljer detta flöde eller det riktiga
+// baserat på om NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY finns). När Stripe är
+// konfigurerat används istället app/api/checkout/payment-intent/route.ts +
+// app/api/webhooks/stripe/route.ts, där webhooken — inte klienten — avgör
+// om ordern faktiskt är betald.
 //
-//   const session = await stripe.checkout.sessions.retrieve(sessionId);
-//   if (session.payment_status !== "paid") { ...returnera fel... }
-//
-// Ordern sparas redan nu persistent (data/orders.json, se
-// lib/data/orderStore.ts) och ett bekräftelsemejl skickas via Resend om
-// RESEND_API_KEY är satt (se lib/email.ts) — båda delarna är redo att
-// användas som de är även efter en riktig betalintegration.
+// Ordern sparas persistent (data/orders.json) och ett bekräftelsemejl
+// skickas direkt via Resend om RESEND_API_KEY är satt (se lib/email.ts).
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
@@ -40,34 +38,9 @@ export async function POST(request: Request) {
   // Simulera kort handläggningstid hos betalleverantören
   await new Promise((resolve) => setTimeout(resolve, 900));
 
-  const orderId = `GL-${Math.floor(100000 + Math.random() * 900000)}`;
-  const shippingOption = SHIPPING_OPTIONS.find(
-    (o) => o.id === session.shipping.shippingMethod
-  );
+  const orderId = generateOrderId();
+  const order = createOrderFromSession(session, orderId, "paid");
 
-  const order: Order = {
-    id: orderId,
-    createdAt: new Date().toISOString(),
-    status: "mottagen",
-    customer: {
-      firstName: session.shipping.firstName,
-      lastName: session.shipping.lastName,
-      email: session.shipping.email,
-      address: session.shipping.address,
-      postalCode: session.shipping.postalCode,
-      city: session.shipping.city,
-    },
-    shippingMethod: session.shipping.shippingMethod,
-    shippingLabel: shippingOption?.label ?? session.shipping.shippingMethod,
-    paymentMethod: session.paymentMethod,
-    items: session.items,
-    subtotal: session.subtotal,
-    shippingCost: session.shippingCost,
-    total: session.amount,
-    attribution: session.attribution,
-  };
-
-  createOrder(order);
   await sendOrderConfirmationEmail(order);
 
   return NextResponse.json({ orderId, status: "paid" as const, amount: session.amount });

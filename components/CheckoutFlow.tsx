@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import YarnImage from "@/components/YarnImage";
+import StripePaymentStep from "@/components/checkout/StripePaymentStep";
 import { useCart } from "@/lib/cart";
 import { formatPrice, FREE_SHIPPING_THRESHOLD } from "@/lib/format";
 import { readStoredAttribution } from "@/lib/attribution";
@@ -14,6 +15,12 @@ import {
   type PaymentMethod,
   type ShippingDetails,
 } from "@/lib/checkout";
+
+// Så länge NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY saknas körs det befintliga
+// mockade betalflödet automatiskt (se app/api/checkout/confirm/route.ts).
+// Så fort nyckeln finns i miljön används StripePaymentStep istället, utan
+// att någon kod behöver ändras.
+const stripeEnabled = Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
 type Step = "leverans" | "betalning";
 
@@ -42,6 +49,12 @@ export default function CheckoutFlow() {
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.id === shipping.shippingMethod)!;
   const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : shippingOption.price;
   const total = subtotal + shippingCost;
+
+  useEffect(() => {
+    if (!stripeEnabled) {
+      console.warn("Stripe-nycklar saknas, kör mockat betalflöde");
+    }
+  }, []);
 
   if (lines.length === 0 && !isProcessing) {
     return (
@@ -288,7 +301,18 @@ export default function CheckoutFlow() {
         )}
 
         {/* ------------------------------------------------ Steg 2: Betalning */}
-        {step === "betalning" && (
+        {step === "betalning" && stripeEnabled && (
+          <div className="mt-8">
+            <StripePaymentStep
+              shipping={shipping}
+              shippingLabel={shippingOption.label}
+              total={total}
+              onBack={() => setStep("leverans")}
+            />
+          </div>
+        )}
+
+        {step === "betalning" && !stripeEnabled && (
           <form onSubmit={handlePayment} className="mt-8 space-y-6">
             <div className="rounded-3xl bg-white/70 p-6 shadow-mjuk ring-1 ring-kol/5 sm:p-8">
               <h2 className="font-display text-xl font-bold text-kol">

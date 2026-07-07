@@ -13,6 +13,16 @@ import path from "path";
 
 export type OrderStatus = "mottagen" | "skickad" | "levererad";
 
+/**
+ * Betalstatus enligt Stripe — helt separat från OrderStatus (leverans-
+ * status). Sätts till "paid" direkt av det mockade flödet (allt lyckas),
+ * eller av app/api/webhooks/stripe/route.ts när en riktig
+ * payment_intent.succeeded/payment_intent.payment_failed tas emot. Ändras
+ * ALDRIG manuellt i admin — Stripe (eller mock-flödet) är alltid
+ * sanningskällan.
+ */
+export type PaymentStatus = "pending" | "paid" | "failed";
+
 export interface OrderItem {
   slug: string;
   name: string;
@@ -46,6 +56,10 @@ export interface Order {
   id: string;
   createdAt: string;
   status: OrderStatus;
+  /** Stripes faktiska betalstatus (eller "paid" direkt i mockat läge). */
+  paymentStatus: PaymentStatus;
+  /** Stripe PaymentIntent-id — saknas i mockat läge. */
+  paymentIntentId?: string;
   customer: OrderCustomer;
   shippingMethod: string;
   shippingLabel: string;
@@ -99,6 +113,15 @@ export function updateOrderStatus(id: string, status: OrderStatus): Order | null
   const idx = all.findIndex((o) => o.id === id);
   if (idx === -1) return null;
   all[idx] = { ...all[idx], status };
+  writeAll(all);
+  return all[idx];
+}
+
+export function updatePaymentStatus(id: string, paymentStatus: PaymentStatus): Order | null {
+  const all = readAll();
+  const idx = all.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  all[idx] = { ...all[idx], paymentStatus };
   writeAll(all);
   return all[idx];
 }

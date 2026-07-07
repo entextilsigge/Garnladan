@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatPrice } from "@/lib/format";
-import type { Order, OrderStatus } from "@/lib/data/orderStore";
+import type { Order, OrderStatus, PaymentStatus } from "@/lib/data/orderStore";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   mottagen: "Mottagen",
@@ -14,6 +14,20 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
   mottagen: "bg-senap/15 text-senap-dark",
   skickad: "bg-gran/10 text-gran",
   levererad: "bg-linne text-mull",
+};
+
+// Ordrar skapade innan betalstatus fanns saknar fältet — de kom alla från
+// det gamla mockade flödet, som alltid lyckades, så "paid" är rätt default.
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: "Väntar betalning",
+  paid: "Betald",
+  failed: "Betalning misslyckades",
+};
+
+const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
+  pending: "bg-senap/15 text-senap-dark",
+  paid: "bg-gran/10 text-gran",
+  failed: "bg-tegel/10 text-tegel",
 };
 
 export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] }) {
@@ -109,59 +123,71 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
               <th className="px-5 py-3.5 font-semibold">Kund</th>
               <th className="px-5 py-3.5 font-semibold">Rader</th>
               <th className="px-5 py-3.5 text-right font-semibold">Totalt</th>
+              <th className="px-5 py-3.5 font-semibold">Betalning</th>
               <th className="px-5 py-3.5 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-kol/[0.06]">
-            {filtered.map((o) => (
-              <tr key={o.id} className="align-top transition-colors hover:bg-linne/40">
-                <td className="px-5 py-3.5 font-mono text-xs font-medium text-kol">{o.id}</td>
-                <td className="px-5 py-3.5 text-mull">
-                  {new Date(o.createdAt).toLocaleString("sv-SE", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </td>
-                <td className="px-5 py-3.5">
-                  <p className="font-medium text-kol">
-                    {o.customer.firstName} {o.customer.lastName}
-                  </p>
-                  <p className="text-xs text-mull">{o.customer.email}</p>
-                  <p className="text-xs text-mull">
-                    {o.customer.postalCode} {o.customer.city}
-                  </p>
-                </td>
-                <td className="px-5 py-3.5 text-mull">
-                  <ul className="space-y-0.5">
-                    {o.items.map((item, i) => (
-                      <li key={i} className="text-xs">
-                        {item.name} · {item.colorName} × {item.quantity}
-                      </li>
-                    ))}
-                  </ul>
-                </td>
-                <td className="px-5 py-3.5 text-right font-medium text-kol">
-                  {formatPrice(o.total)}
-                </td>
-                <td className="px-5 py-3.5">
-                  <select
-                    value={o.status}
-                    disabled={updatingId === o.id}
-                    onChange={(e) => handleStatusChange(o, e.target.value as OrderStatus)}
-                    className={`rounded-full border-0 px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-tegel/40 ${STATUS_STYLES[o.status]}`}
-                  >
-                    {(Object.keys(STATUS_LABELS) as OrderStatus[]).map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+            {filtered.map((o) => {
+              const paymentStatus: PaymentStatus = o.paymentStatus ?? "paid";
+              return (
+                <tr key={o.id} className="align-top transition-colors hover:bg-linne/40">
+                  <td className="px-5 py-3.5 font-mono text-xs font-medium text-kol">{o.id}</td>
+                  <td className="px-5 py-3.5 text-mull">
+                    {new Date(o.createdAt).toLocaleString("sv-SE", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <p className="font-medium text-kol">
+                      {o.customer.firstName} {o.customer.lastName}
+                    </p>
+                    <p className="text-xs text-mull">{o.customer.email}</p>
+                    <p className="text-xs text-mull">
+                      {o.customer.postalCode} {o.customer.city}
+                    </p>
+                  </td>
+                  <td className="px-5 py-3.5 text-mull">
+                    <ul className="space-y-0.5">
+                      {o.items.map((item, i) => (
+                        <li key={i} className="text-xs">
+                          {item.name} · {item.colorName} × {item.quantity}
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-medium text-kol">
+                    {formatPrice(o.total)}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span
+                      title="Sätts automatiskt av Stripe (eller det mockade flödet) — går inte att ändra manuellt."
+                      className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${PAYMENT_STATUS_STYLES[paymentStatus]}`}
+                    >
+                      {PAYMENT_STATUS_LABELS[paymentStatus]}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <select
+                      value={o.status}
+                      disabled={updatingId === o.id}
+                      onChange={(e) => handleStatusChange(o, e.target.value as OrderStatus)}
+                      className={`rounded-full border-0 px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-tegel/40 ${STATUS_STYLES[o.status]}`}
+                    >
+                      {(Object.keys(STATUS_LABELS) as OrderStatus[]).map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-mull">
+                <td colSpan={7} className="px-5 py-8 text-center text-mull">
                   Inga beställningar matchade.
                 </td>
               </tr>

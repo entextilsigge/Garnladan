@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedRequest } from "@/lib/adminAuth";
 import { deleteCampaign, updateCampaign } from "@/lib/data/campaignStore";
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
@@ -17,7 +18,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   return NextResponse.json({ campaign: updated });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }

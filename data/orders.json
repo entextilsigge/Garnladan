@@ -1,5 +1,38 @@
 [
   {
+    "id": "GL-829308",
+    "createdAt": "2026-07-07T08:42:15.070Z",
+    "status": "mottagen",
+    "customer": {
+      "firstName": "Test",
+      "lastName": "Testsson",
+      "email": "next16test@example.se",
+      "address": "Testvägen 16",
+      "postalCode": "462 30",
+      "city": "Vänersborg"
+    },
+    "shippingMethod": "ombud",
+    "shippingLabel": "PostNord — ombud",
+    "paymentMethod": "kort",
+    "items": [
+      {
+        "slug": "silkesmanen-mohair",
+        "name": "Silkesmånen Mohair",
+        "colorName": "Månsken",
+        "quantity": 1,
+        "unitPrice": 189
+      }
+    ],
+    "subtotal": 189,
+    "shippingCost": 49,
+    "total": 238,
+    "attribution": {
+      "source": "direkt",
+      "medium": "okänt",
+      "campaign": "okänd"
+    }
+  },
+  {
     "id": "GL-297224",
     "createdAt": "2026-07-07T06:55:57.452Z",
     "status": "skickad",

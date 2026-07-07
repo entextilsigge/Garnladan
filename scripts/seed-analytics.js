@@ -233,6 +233,7 @@ function seedOrders(campaigns) {
       id: `${SEED_ORDER_PREFIX}${String(i).padStart(4, "0")}`,
       createdAt,
       status: statusForDate(createdDate),
+      paymentStatus: "paid",
       customer,
       shippingMethod: shippingOption.id,
       shippingLabel: shippingOption.label,

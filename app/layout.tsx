@@ -37,7 +37,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="sv" className={`${fraunces.variable} ${karla.variable}`}>
+    <html
+      lang="sv"
+      className={`${fraunces.variable} ${karla.variable}`}
+      data-scroll-behavior="smooth"
+    >
       <body>
         <UtmCapture />
         <CartProvider>

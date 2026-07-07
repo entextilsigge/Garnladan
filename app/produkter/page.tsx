@@ -14,11 +14,12 @@ export const metadata: Metadata = {
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[];
 const VALID_SORTS = ["popularitet", "nyheter", "pris-stigande", "pris-fallande"] as const;
 
-export default function ProductsPage({
-  searchParams,
-}: {
-  searchParams: { kategori?: string; sortering?: string };
-}) {
+export default async function ProductsPage(
+  props: {
+    searchParams: Promise<{ kategori?: string; sortering?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const category = VALID_CATEGORIES.includes(searchParams.kategori as Category)
     ? (searchParams.kategori as Category)
     : undefined;

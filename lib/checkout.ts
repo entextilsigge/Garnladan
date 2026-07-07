@@ -15,7 +15,11 @@
 
 import type { OrderAttribution } from "@/lib/data/orderStore";
 
-export type PaymentMethod = "kort" | "klarna";
+// "stripe" täcker alla metoder Stripes Payment Element kan visa (kort,
+// Klarna, m.fl.) — vilken som faktiskt användes avgörs av kunden i
+// StripePaymentStep.tsx, inte i förväg. "kort"/"klarna" används bara av det
+// mockade betalflödet.
+export type PaymentMethod = "kort" | "klarna" | "stripe";
 
 export interface ShippingDetails {
   firstName: string;

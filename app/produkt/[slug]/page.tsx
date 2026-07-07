@@ -8,11 +8,12 @@ import { CATEGORY_LABELS } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
-export function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Metadata {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const product = getProductBySlug(params.slug);
   if (!product) return { title: "Produkten hittades inte" };
   return {
@@ -21,7 +22,8 @@ export function generateMetadata({
   };
 }
 
-export default function ProductPage({ params }: { params: { slug: string } }) {
+export default async function ProductPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const product = getProductBySlug(params.slug);
   if (!product) notFound();
 

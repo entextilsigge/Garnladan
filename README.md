@@ -141,47 +141,124 @@ eller på Vercel. Idempotent — kör om när du vill, tidigare seed-data
 (identifierad via `SEED-`-prefix på ordernumret) rensas och ersätts. **Kör
 aldrig detta mot en databas med riktiga kundordrar** utan att först säkerhetskopiera `data/orders.json`.
 
-## Koppla in riktig betalning
+## Stripe / betalning
 
-Betalflödet är mockat men strukturerat för Stripe/Klarna:
+Betalningen är byggd med **Stripe Elements** (eget UI i vår egen
+checkout-design, inte Stripes hostade Checkout-sida). **Klarna kräver ingen
+extra kod** — den dyker upp automatiskt i Payment Element så fort Klarna är
+aktiverat i Stripe Dashboard, eftersom PaymentIntenten skapas med
+`automatic_payment_methods: { enabled: true }` (se
+[`app/api/checkout/payment-intent/route.ts`](app/api/checkout/payment-intent/route.ts)).
 
-- [`lib/checkout.ts`](lib/checkout.ts) — `createCheckoutSession()` och
-  `confirmPayment()`, de enda funktioner UI:t anropar. Rörs inte vid en
-  riktig integration.
+**Utan Stripe-nycklar körs sajten i mockat betalläge automatiskt** — inget
+kraschar, och en tydlig varning (`Stripe-nycklar saknas, kör mockat
+betalflöde`) loggas i webbläsarkonsolen. Så fort nycklarna finns i miljön
+växlar sajten till riktiga Stripe Elements, helt utan kodändring — bara en
+redeploy (eller omstart av `npm run dev` lokalt).
+
+### Miljövariabler att lägga till i Vercel
+
+När ni skaffat ett Stripe-konto, lägg till dessa tre under **Project
+Settings → Environment Variables**:
+
+| Variabel | Var den hittas i Stripe Dashboard |
+|---|---|
+| `STRIPE_SECRET_KEY` | [dashboard.stripe.com/apikeys](https://dashboard.stripe.com/apikeys) — växla mellan test-/liveläge högst upp på sidan. Börjar med `sk_test_` respektive `sk_live_`. |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Samma sida som ovan, `pk_test_`/`pk_live_`-nyckeln. Denna är avsedd att vara publik (skickas till klienten). |
+| `STRIPE_WEBHOOK_SECRET` | [dashboard.stripe.com/webhooks](https://dashboard.stripe.com/webhooks) → **Add endpoint** → URL `https://<din-domän>/api/webhooks/stripe` → prenumerera på `payment_intent.succeeded` och `payment_intent.payment_failed` → kopiera **Signing secret** för just den endpointen (inte en generell API-nyckel). |
+
+Aktivera Klarna under **Settings → Payment methods** i Stripe Dashboard — då
+dyker den upp i kassan automatiskt, ingen kod behöver ändras.
+
+### Arkitektur
+
+- [`lib/stripe.ts`](lib/stripe.ts) — `isStripeConfigured()` styr all
+  växling mellan mockat och riktigt läge, server-side.
 - [`app/api/checkout/session/route.ts`](app/api/checkout/session/route.ts) —
-  byt mot `stripe.checkout.sessions.create(...)`. Beloppet beräknas redan
-  server-side från produktdatan.
-- [`app/api/checkout/confirm/route.ts`](app/api/checkout/confirm/route.ts) —
-  byt mot verifiering av betalstatus. Ordern sparas redan idag persistent
-  (för adminvyn) och ett bekräftelsemejl skickas via Resend om
-  `RESEND_API_KEY` är satt — båda delarna kan återanvändas som de är.
+  **orört** vid Stripe-integrationen. Beräknar fortfarande beloppet
+  server-side från produktdatan, oavsett betalsätt.
+- [`app/api/checkout/payment-intent/route.ts`](app/api/checkout/payment-intent/route.ts) —
+  skapar en Stripe PaymentIntent från sessionens redan beräknade belopp
+  (i öre) och skapar samtidigt ordern med `paymentStatus: "pending"`.
+- [`components/checkout/StripePaymentStep.tsx`](components/checkout/StripePaymentStep.tsx) +
+  [`PaymentForm.tsx`](components/checkout/PaymentForm.tsx) — Stripes
+  `Elements`-provider och `PaymentElement`, stylad via `appearance`-API:t
+  för att matcha Fraunces/Karla och den varma paletten så långt Stripe
+  tillåter (Elements renderas i en iframe).
+- [`app/api/webhooks/stripe/route.ts`](app/api/webhooks/stripe/route.ts) —
+  **sanningskällan** för om en order är betald. Lyssnar på
+  `payment_intent.succeeded`/`payment_intent.payment_failed`, verifierar
+  Stripes signatur med `STRIPE_WEBHOOK_SECRET`, uppdaterar
+  `order.paymentStatus`, och triggar bekräftelsemejlet (inte klientens
+  redirect — se kommentarer i filen för varför).
+- [`app/kassa/bekraftelse/page.tsx`](app/kassa/bekraftelse/page.tsx) —
+  hämtar alltid den faktiska betalstatusen live från
+  `/api/checkout/order-status` istället för att lita på klientens redirect;
+  visar "väntar bekräftelse" om webhooken inte hunnit köra än.
+- Mockat läge ([`app/api/checkout/confirm/route.ts`](app/api/checkout/confirm/route.ts))
+  och riktigt Stripe-läge delar samma order-byggarfunktion
+  ([`lib/orders.ts`](lib/orders.ts)) — enda skillnaden är `paymentStatus`
+  och om ett `paymentIntentId` sätts.
 
-Funktionssignaturerna är designade för att inte behöva ändras.
+### Moms
+
+Alla priser i produktkatalogen är redan momsinkluderade (25 % svensk moms),
+vilket redan syns i UI:t ("Totalt **inkl. moms**" i varukorg och kassa).
+Beloppet som skickas till Stripe (`session.amount * 100` öre) är exakt
+samma belopp som visas för kunden — `automatic_tax` används medvetet INTE
+på PaymentIntenten, det skulle lägga på moms en gång till ovanpå ett redan
+momsinkluderat pris.
+
+### Testning när kontot finns
+
+Sätt in test-nycklarna (`sk_test_…`/`pk_test_…`), kör `npm run dev`, och
+betala med Stripes officiella testkort, t.ex. **4242 4242 4242 4242** (valfritt
+framtida utgångsdatum, valfri CVC/postnummer) — dokumenterat på
+[docs.stripe.com/testing](https://docs.stripe.com/testing). Detta har inte
+kunnat verifieras i den här sessionen eftersom inget Stripe-konto finns
+ännu — verifiera tillsammans så fort kontot är skapat.
+
+Jag har verifierat arkitekturen genom att tillfälligt sätta in en
+**ogiltig** testnyckel: sajten växlade korrekt till de riktiga Stripe
+Elements-komponenterna (inget mockat UI längre, ingen "saknas nycklar"-
+varning), och när anropet till Stripes API nådde fram fick vi tillbaka
+Stripes egna felmeddelande ("Invalid API Key provided…") snyggt visat i
+kassan — vilket bekräftar att hela kedjan (session → PaymentIntent →
+Stripe-anrop → felhantering) fungerar; det enda som saknas är ett riktigt
+konto.
 
 ## Bekräftelsemejl
 
 [`lib/email.ts`](lib/email.ts) skickar ett bekräftelsemejl via Resends
-REST-API vid genomförd (mockad) order. Saknas `RESEND_API_KEY` loggas mejlet
-bara till konsolen — checkout-flödet fungerar felfritt även utan nyckel. Lägg
-till `RESEND_API_KEY` (och valfritt `RESEND_FROM_EMAIL`) för att aktivera
-riktiga mejl.
+REST-API. I mockat betalläge triggas det direkt av
+`app/api/checkout/confirm/route.ts`; i riktigt Stripe-läge triggas det av
+webhooken (`payment_intent.succeeded`), inte av klientens redirect — se
+"Stripe / betalning" ovan. Saknas `RESEND_API_KEY` loggas mejlet bara till
+konsolen — checkout-flödet fungerar felfritt även utan nyckel. Lägg till
+`RESEND_API_KEY` (och valfritt `RESEND_FROM_EMAIL`) för att aktivera riktiga
+mejl.
 
 ## Klart vs. mockat
 
 **Riktigt klart:** all UI och design, produktdata i JSON-fil med riktig
 CRUD + lagerhantering via admin, orderhantering i admin (status,
-sök/filtrering), varukorg (localStorage + lagerkoll mot katalogen),
-filtrering/sortering, checkout-flödets steg och validering, adminlösenord via
-miljövariabel med serverside-koll, nyhetsbrevs-signup med persistent lagring,
-bekräftelsemejl-integration (no-op utan nyckel), per-sida `<title>`/meta
-description, responsiv design, UTM-attribution end-to-end, statistik-
-dashboarden med Excel-export.
+betalstatus, sök/filtrering), varukorg (localStorage + lagerkoll mot
+katalogen), filtrering/sortering, checkout-flödets steg och validering,
+adminlösenord via miljövariabel med serverside-koll, nyhetsbrevs-signup med
+persistent lagring, bekräftelsemejl-integration (no-op utan nyckel),
+per-sida `<title>`/meta description, responsiv design, UTM-attribution
+end-to-end, statistik-dashboarden med Excel-export, och **hela
+Stripe Elements + Klarna-integrationen (kod och arkitektur)** — enda som
+saknas för att den ska vara skarp är själva Stripe-kontot och test enligt
+avsnittet "Stripe / betalning" ovan.
 
-**Medvetet mockat:** själva betalningen (simulerad lyckad betalning —
-Stripe/Klarna kopplas in enligt ovan), datalagring via JSON-filer istället
-för databas (fungerar lokalt, försvinner mellan deploys på Vercel — se
-"Datalagring" ovan), bekräftelsemejl skickas bara om `RESEND_API_KEY` är
-satt, `costPrice` är platshållarvärden (se "Statistik / analytics" ovan).
+**Medvetet mockat tills Stripe-konto finns:** betalningen körs i simulerat
+läge (se `lib/checkout.ts`/`app/api/checkout/confirm/route.ts`) tills
+`STRIPE_SECRET_KEY`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` läggs in. Utöver
+det: datalagring via JSON-filer istället för databas (fungerar lokalt,
+försvinner mellan deploys på Vercel — se "Datalagring" ovan),
+bekräftelsemejl skickas bara om `RESEND_API_KEY` är satt, `costPrice` är
+platshållarvärden (se "Statistik / analytics" ovan).
 
 **Inte hunnet / medvetet avgränsat:**
 - Lagersaldo dras inte automatiskt vid en genomförd beställning — det är
@@ -220,3 +297,14 @@ satt, `costPrice` är platshållarvärden (se "Statistik / analytics" ovan).
   `npm audit`-varningar (prototype pollution/ReDoS). Samma API, ingen
   kodändring — bara installationskällan skiljer sig. Kör `npm install` som
   vanligt; `npm audit` ska inte längre visa någon `xlsx`-varning.
+- **`order.paymentMethod`** sätts till den generiska strängen `"stripe"` i
+  riktigt betalläge (istället för t.ex. `"klarna"`) — kunden väljer sin
+  metod inuti Payment Element efter att ordern redan skapats med
+  `paymentStatus: "pending"`, så exakt metod är bara känd i Stripes eget
+  dashboard, inte i vår lokala orderdata. Går att förbättra genom att läsa
+  `charge.payment_method_details.type` i webhooken om det behövs senare.
+- Om själva anropet till Stripes API skulle misslyckas när en PaymentIntent
+  skapas (t.ex. tillfälligt nätverksfel — inte samma sak som en avvisad
+  betalning, vilket hanteras normalt via `stripe.confirmPayment`), kastas
+  den redan konsumerade checkout-sessionen bort och kunden får fylla i
+  kassan på nytt. Ovanligt i praktiken men värt att känna till.

@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function AdminPage() {
-  const authed = isValidSessionToken(cookies().get(ADMIN_COOKIE_NAME)?.value);
+export default async function AdminPage() {
+  const authed = isValidSessionToken((await cookies()).get(ADMIN_COOKIE_NAME)?.value);
 
   if (!authed) {
     return <AdminLoginForm />;
