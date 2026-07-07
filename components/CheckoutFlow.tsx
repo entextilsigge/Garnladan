@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 import YarnImage from "@/components/YarnImage";
 import StripePaymentStep from "@/components/checkout/StripePaymentStep";
 import { useCart } from "@/lib/cart";
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
+import { useSettings } from "@/lib/settings";
 import { readStoredAttribution } from "@/lib/attribution";
 import {
   createCheckoutSession,
   confirmPayment,
+  calculateShippingCost,
   SHIPPING_OPTIONS,
   type PaymentMethod,
   type ShippingDetails,
@@ -77,6 +79,7 @@ function TermsCheckbox({
 export default function CheckoutFlow() {
   const router = useRouter();
   const { lines, subtotal, clearCart } = useCart();
+  const settings = useSettings();
   const [step, setStep] = useState<Step>("leverans");
   const [shipping, setShipping] = useState<ShippingDetails>(EMPTY_SHIPPING);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("kort");
@@ -86,7 +89,7 @@ export default function CheckoutFlow() {
   const [termsError, setTermsError] = useState<string | null>(null);
 
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.id === shipping.shippingMethod)!;
-  const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : shippingOption.price;
+  const shippingCost = calculateShippingCost(subtotal, shipping.shippingMethod, settings);
   const total = subtotal + shippingCost;
 
   useEffect(() => {
@@ -300,37 +303,38 @@ export default function CheckoutFlow() {
             <div className="rounded-3xl bg-white/70 p-6 shadow-mjuk ring-1 ring-kol/5 sm:p-8">
               <h2 className="font-display text-xl font-bold text-kol">Leveranssätt</h2>
               <div className="mt-5 space-y-3">
-                {SHIPPING_OPTIONS.map((option) => (
-                  <label
-                    key={option.id}
-                    className={`flex cursor-pointer items-center justify-between gap-4 rounded-2xl border p-4 transition-all ${
-                      shipping.shippingMethod === option.id
-                        ? "border-tegel bg-tegel/[0.05] ring-1 ring-tegel"
-                        : "border-kol/10 hover:border-kol/30"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="shippingMethod"
-                        checked={shipping.shippingMethod === option.id}
-                        onChange={() => updateField("shippingMethod", option.id)}
-                        className="h-4 w-4 accent-tegel"
-                      />
-                      <span>
-                        <span className="block text-sm font-semibold text-kol">
-                          {option.label}
+                {SHIPPING_OPTIONS.map((option) => {
+                  const optionCost = calculateShippingCost(subtotal, option.id, settings);
+                  return (
+                    <label
+                      key={option.id}
+                      className={`flex cursor-pointer items-center justify-between gap-4 rounded-2xl border p-4 transition-all ${
+                        shipping.shippingMethod === option.id
+                          ? "border-tegel bg-tegel/[0.05] ring-1 ring-tegel"
+                          : "border-kol/10 hover:border-kol/30"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="shippingMethod"
+                          checked={shipping.shippingMethod === option.id}
+                          onChange={() => updateField("shippingMethod", option.id)}
+                          className="h-4 w-4 accent-tegel"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-kol">
+                            {option.label}
+                          </span>
+                          <span className="block text-xs text-mull">{option.description}</span>
                         </span>
-                        <span className="block text-xs text-mull">{option.description}</span>
                       </span>
-                    </span>
-                    <span className="text-sm font-semibold text-kol">
-                      {subtotal >= FREE_SHIPPING_THRESHOLD || option.price === 0
-                        ? "Fritt"
-                        : formatPrice(option.price)}
-                    </span>
-                  </label>
-                ))}
+                      <span className="text-sm font-semibold text-kol">
+                        {optionCost === 0 ? "Fritt" : formatPrice(optionCost)}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 

@@ -5,6 +5,7 @@ import AdminDashboard from "@/components/admin/AdminDashboard";
 import { ADMIN_COOKIE_NAME, isValidSessionToken } from "@/lib/adminAuth";
 import { getAllProducts } from "@/lib/data/productStore";
 import { getAllOrders } from "@/lib/data/orderStore";
+import { getShippingSettings } from "@/lib/data/settingsStore";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,9 @@ export default async function AdminPage() {
 
   const products = getAllProducts();
   const orders = getAllOrders();
+  const settings = getShippingSettings();
 
-  return <AdminDashboard initialProducts={products} initialOrders={orders} />;
+  return (
+    <AdminDashboard initialProducts={products} initialOrders={orders} initialSettings={settings} />
+  );
 }

@@ -3,10 +3,12 @@
 import Link from "next/link";
 import YarnImage from "@/components/YarnImage";
 import { useCart } from "@/lib/cart";
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
+import { useSettings } from "@/lib/settings";
 
 export default function CartPage() {
   const { lines, subtotal, setQuantity, removeItem } = useCart();
+  const settings = useSettings();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
@@ -113,7 +115,9 @@ export default function CartPage() {
               <div className="flex justify-between">
                 <dt className="text-mull">Frakt</dt>
                 <dd className="font-medium text-kol">
-                  {subtotal >= FREE_SHIPPING_THRESHOLD ? "Fri frakt" : "Beräknas i kassan"}
+                  {settings.freeShippingEnabled && subtotal >= settings.freeShippingThreshold
+                    ? "Fri frakt"
+                    : "Beräknas i kassan"}
                 </dd>
               </div>
             </dl>

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useEffect } from "react";
 import YarnImage from "@/components/YarnImage";
 import { useCart } from "@/lib/cart";
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
+import { useSettings } from "@/lib/settings";
 
 export default function CartDrawer() {
   const { lines, subtotal, isDrawerOpen, closeDrawer, setQuantity, removeItem } =
     useCart();
+  const settings = useSettings();
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -23,7 +25,9 @@ export default function CartDrawer() {
 
   if (!isDrawerOpen) return null;
 
-  const remaining = FREE_SHIPPING_THRESHOLD - subtotal;
+  const remaining = settings.freeShippingEnabled
+    ? settings.freeShippingThreshold - subtotal
+    : -1;
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Varukorg">
@@ -63,14 +67,16 @@ export default function CartDrawer() {
         ) : (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {remaining > 0 ? (
+              {settings.freeShippingEnabled && remaining > 0 && (
                 <p className="mb-4 rounded-xl bg-linne px-4 py-3 text-sm text-mull">
                   Handla för <strong className="text-kol">{formatPrice(remaining)}</strong> till
                   så bjuder vi på frakten.
                 </p>
-              ) : (
+              )}
+              {settings.freeShippingEnabled && remaining <= 0 && (
                 <p className="mb-4 rounded-xl bg-gran/10 px-4 py-3 text-sm font-medium text-gran">
-                  Fri frakt — du har handlat för över {formatPrice(FREE_SHIPPING_THRESHOLD)}!
+                  Fri frakt — du har handlat för över{" "}
+                  {formatPrice(settings.freeShippingThreshold)}!
                 </p>
               )}
               <ul className="space-y-4">

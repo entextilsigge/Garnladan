@@ -25,6 +25,7 @@ export default function CookieConsentBanner() {
       role="dialog"
       aria-label="Cookie-inställningar"
       aria-modal="false"
+      data-print-hide
       className="fixed inset-x-0 bottom-0 z-[60] animate-fade-up px-4 pb-4 sm:px-6"
     >
       <div className="mx-auto max-w-3xl rounded-3xl bg-kol p-6 text-krita shadow-lyft ring-1 ring-krita/10 sm:p-7">

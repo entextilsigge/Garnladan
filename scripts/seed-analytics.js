@@ -12,10 +12,11 @@
  * respektive kampanjnamn) innan nya skapas, så upprepade körningar inte
  * dubblar upp data.
  *
- * OBS: fraktpriser/gränsen för fri frakt är hårdkodade här för att spegla
- * lib/checkout.ts (SHIPPING_OPTIONS) och lib/format.ts
- * (FREE_SHIPPING_THRESHOLD) utan att behöva köra TypeScript i ett rent
- * Node-script. Håll dem i synk om de ändras där.
+ * OBS: fraktpriserna/fri frakt-gränsen nedan speglar bara
+ * DEFAULT_SHIPPING_SETTINGS i lib/checkout.ts (utan att behöva köra
+ * TypeScript i ett rent Node-script) — de är sedan admin-redigerbara i
+ * skarp drift (se lib/data/settingsStore.ts) och kan alltså ha ändrats från
+ * de här värdena. Påverkar bara hur realistisk seedad testdata ser ut.
  */
 
 const fs = require("fs");
@@ -184,11 +185,17 @@ function pickCustomer() {
 
 // --- Ordrar ---------------------------------------------------------
 
+// Packflödets tre steg — se lib/data/orderStore.ts (OrderStatus).
 function statusForDate(date) {
   const ageDays = (Date.now() - date.getTime()) / 86_400_000;
-  if (ageDays > 14) return Math.random() < 0.9 ? "levererad" : "skickad";
-  if (ageDays > 6) return Math.random() < 0.6 ? "skickad" : Math.random() < 0.5 ? "levererad" : "mottagen";
-  return Math.random() < 0.7 ? "mottagen" : "skickad";
+  if (ageDays > 6) return "skickad";
+  if (ageDays > 2) return Math.random() < 0.5 ? "skickad" : "packad";
+  return Math.random() < 0.7 ? "vantar_packning" : "packad";
+}
+
+function trackingNumberForStatus(status) {
+  if (status !== "skickad") return undefined;
+  return `SE${Math.floor(100000000 + Math.random() * 900000000)}SE`;
 }
 
 function buildOrderLines() {
@@ -228,12 +235,15 @@ function seedOrders(campaigns) {
     const total = subtotal + shippingCost;
     const customer = pickCustomer();
     const attribution = attributionForDate(createdDate, campaigns);
+    const status = statusForDate(createdDate);
+    const trackingNumber = trackingNumberForStatus(status);
 
     seeded.push({
       id: `${SEED_ORDER_PREFIX}${String(i).padStart(4, "0")}`,
       createdAt,
-      status: statusForDate(createdDate),
+      status,
       paymentStatus: "paid",
+      ...(trackingNumber ? { trackingNumber } : {}),
       customer,
       shippingMethod: shippingOption.id,
       shippingLabel: shippingOption.label,

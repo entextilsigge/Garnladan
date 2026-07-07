@@ -8,6 +8,7 @@
 // den ifyllda texten direkt till oss.
 
 import { useState } from "react";
+import { COMPANY_INFO, formatReturAddress } from "@/lib/company-info";
 
 const EMPTY = {
   orderId: "",
@@ -28,7 +29,7 @@ export default function AngerFormular() {
 
   function mailtoBody(): string {
     return encodeURIComponent(
-      `Till Garnladan AB, Vargön (hej@garnladan.se)\n\n` +
+      `Till ${formatReturAddress()} (${COMPANY_INFO.email})\n\n` +
         `Jag/vi meddelar härmed att jag/vi frånträder mitt/vårt köpeavtal av följande varor:\n` +
         `Ordernummer: ${fields.orderId || "(fyll i)"}\n\n` +
         `Beställdes den: ${fields.orderedDate || "(fyll i)"}\n` +
@@ -57,7 +58,7 @@ export default function AngerFormular() {
 
       <div className="mt-5 space-y-4 text-sm text-kol">
         <p>
-          <strong>Till:</strong> Garnladan AB, Vargön, hej@garnladan.se
+          <strong>Till:</strong> {formatReturAddress()}, {COMPANY_INFO.email}
         </p>
         <p>
           Jag/vi meddelar härmed att jag/vi frånträder mitt/vårt köpeavtal

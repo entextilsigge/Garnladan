@@ -11,7 +11,14 @@ import path from "path";
 // orders/* och app/api/checkout/confirm pratar bara med funktionerna här.
 // ---------------------------------------------------------------------------
 
-export type OrderStatus = "mottagen" | "skickad" | "levererad";
+/**
+ * Packflödet — helt manuellt, ingen fraktförmedlarintegration (Fraktjakt/
+ * Sendcloud) i det här skedet. "vantar_packning" är default för en ny,
+ * betald order; "packad" är ett valfritt mellansteg; "skickad" sätts när
+ * spårningsnumret matats in (se updateOrderFulfillment nedan), vilket
+ * triggar skickad-mejlet i lib/email.ts.
+ */
+export type OrderStatus = "vantar_packning" | "packad" | "skickad";
 
 /**
  * Betalstatus enligt Stripe — helt separat från OrderStatus (leverans-
@@ -60,6 +67,8 @@ export interface Order {
   paymentStatus: PaymentStatus;
   /** Stripe PaymentIntent-id — saknas i mockat läge. */
   paymentIntentId?: string;
+  /** PostNords spårningsnummer — sätts av admin när status blir "skickad". */
+  trackingNumber?: string;
   customer: OrderCustomer;
   shippingMethod: string;
   shippingLabel: string;
@@ -108,11 +117,23 @@ export function createOrder(order: Order): Order {
   return order;
 }
 
-export function updateOrderStatus(id: string, status: OrderStatus): Order | null {
+/**
+ * Uppdaterar packningsstatus och/eller spårningsnummer i ett svep — så att
+ * app/api/admin/orders/[id]/route.ts kan jämföra gammal/ny status (för att
+ * avgöra om skickad-mejlet ska triggas) utifrån samma atomiska skrivning.
+ */
+export function updateOrderFulfillment(
+  id: string,
+  updates: { status?: OrderStatus; trackingNumber?: string }
+): Order | null {
   const all = readAll();
   const idx = all.findIndex((o) => o.id === id);
   if (idx === -1) return null;
-  all[idx] = { ...all[idx], status };
+  all[idx] = {
+    ...all[idx],
+    ...(updates.status ? { status: updates.status } : {}),
+    ...(updates.trackingNumber !== undefined ? { trackingNumber: updates.trackingNumber } : {}),
+  };
   writeAll(all);
   return all[idx];
 }

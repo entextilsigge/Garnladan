@@ -5,17 +5,21 @@ import { useRouter } from "next/navigation";
 import ProductsPanel from "@/components/admin/ProductsPanel";
 import OrdersPanel from "@/components/admin/OrdersPanel";
 import AnalyticsPanel from "@/components/admin/analytics/AnalyticsPanel";
+import SettingsPanel from "@/components/admin/SettingsPanel";
 import type { Product } from "@/lib/products";
 import type { Order } from "@/lib/data/orderStore";
+import type { ShippingSettings } from "@/lib/checkout";
 
-type Tab = "produkter" | "bestallningar" | "statistik";
+type Tab = "produkter" | "bestallningar" | "statistik" | "installningar";
 
 export default function AdminDashboard({
   initialProducts,
   initialOrders,
+  initialSettings,
 }: {
   initialProducts: Product[];
   initialOrders: Order[];
+  initialSettings: ShippingSettings;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("produkter");
@@ -70,12 +74,21 @@ export default function AdminDashboard({
         >
           Statistik
         </button>
+        <button
+          onClick={() => setTab("installningar")}
+          className={`rounded-full px-5 py-2.5 text-sm font-medium transition-all ${
+            tab === "installningar" ? "bg-kol text-krita" : "bg-linne text-mull hover:text-kol"
+          }`}
+        >
+          Inställningar
+        </button>
       </div>
 
       <div className="mt-6">
         {tab === "produkter" && <ProductsPanel initialProducts={initialProducts} />}
         {tab === "bestallningar" && <OrdersPanel initialOrders={initialOrders} />}
         {tab === "statistik" && <AnalyticsPanel />}
+        {tab === "installningar" && <SettingsPanel initialSettings={initialSettings} />}
       </div>
     </div>
   );

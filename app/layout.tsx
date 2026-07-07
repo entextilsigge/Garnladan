@@ -6,6 +6,7 @@ import CartDrawer from "@/components/CartDrawer";
 import UtmCapture from "@/components/UtmCapture";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
 import { CartProvider } from "@/lib/cart";
+import { SettingsProvider } from "@/lib/settings";
 import "./globals.css";
 
 // Fraunces: en varm, "mjukt gammaldags" display-serif med hög karaktär —
@@ -45,12 +46,14 @@ export default function RootLayout({
     >
       <body>
         <UtmCapture />
-        <CartProvider>
-          <Header />
-          <main className="min-h-[60vh]">{children}</main>
-          <Footer />
-          <CartDrawer />
-        </CartProvider>
+        <SettingsProvider>
+          <CartProvider>
+            <Header />
+            <main className="min-h-[60vh]">{children}</main>
+            <Footer />
+            <CartDrawer />
+          </CartProvider>
+        </SettingsProvider>
         <CookieConsentBanner />
       </body>
     </html>

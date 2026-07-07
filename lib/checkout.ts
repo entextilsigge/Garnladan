@@ -49,31 +49,80 @@ export interface PaymentConfirmation {
   amount: number;
 }
 
+// Metadata (id/etikett/beskrivning) för leveransmetoderna — statiskt, ändras
+// inte i admin. Själva PRISET för "ombud"/"hem" är ett admin-redigerbart
+// flatrate (se ShippingSettings nedan); "ladan" (hämta i butiken) är alltid
+// gratis. Ingen live-beräkning mot PostNords API — bara ett enkelt,
+// utbytbart fast pris, se resolveShippingPrice.
 export const SHIPPING_OPTIONS: {
   id: ShippingDetails["shippingMethod"];
   label: string;
   description: string;
-  price: number;
 }[] = [
   {
     id: "ombud",
     label: "PostNord — ombud",
     description: "Leverans till närmaste ombud, 1–3 vardagar",
-    price: 49,
   },
   {
     id: "hem",
     label: "Hemleverans",
     description: "Leverans till dörren kvällstid, 1–2 vardagar",
-    price: 89,
   },
   {
     id: "ladan",
     label: "Hämta i Vargön",
     description: "Hämta i vårt lager i Vargön — klar inom 2 timmar",
-    price: 0,
   },
 ];
+
+/**
+ * Admin-redigerbara fraktinställningar. Lagras via
+ * lib/data/settingsStore.ts (server) och hämtas av klienten via
+ * GET /api/settings (se lib/settings.tsx).
+ */
+export interface ShippingSettings {
+  /** Flatrate-pris i kr för "PostNord — ombud". */
+  ombudPrice: number;
+  /** Flatrate-pris i kr för "Hemleverans". */
+  hemPrice: number;
+  freeShippingEnabled: boolean;
+  freeShippingThreshold: number;
+}
+
+export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
+  ombudPrice: 49,
+  hemPrice: 89,
+  freeShippingEnabled: true,
+  freeShippingThreshold: 499,
+};
+
+/** Flatrate-priset för en leveransmetod, innan ev. fri frakt-gräns tillämpas. */
+export function resolveShippingPrice(
+  methodId: ShippingDetails["shippingMethod"],
+  settings: Pick<ShippingSettings, "ombudPrice" | "hemPrice">
+): number {
+  if (methodId === "ombud") return settings.ombudPrice;
+  if (methodId === "hem") return settings.hemPrice;
+  return 0; // "ladan" — hämta i butiken är alltid gratis
+}
+
+/**
+ * Den faktiska fraktkostnaden för en order: flatrate-priset för vald
+ * leveransmetod, eller 0 om delsumman når fri frakt-gränsen (om aktiverad).
+ * Används både server-side (app/api/checkout/session/route.ts, som äger
+ * prisberäkningen) och klient-side (för att visa samma belopp i kassan).
+ */
+export function calculateShippingCost(
+  subtotal: number,
+  methodId: ShippingDetails["shippingMethod"],
+  settings: ShippingSettings
+): number {
+  if (settings.freeShippingEnabled && subtotal >= settings.freeShippingThreshold) {
+    return 0;
+  }
+  return resolveShippingPrice(methodId, settings);
+}
 
 /**
  * Skapar en checkout-session hos betalleverantören (mockad idag).

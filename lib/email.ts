@@ -19,6 +19,43 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 // produktion — se .env.example.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://garnladan.se";
 
+// OBS: detta URL-format kunde inte slutgiltigt bekräftas mot PostNords
+// live-spårningstjänst i den här sessionen (deras publika spårningssida är
+// en JS-app som inte gick att inspektera direkt) — verifiera med ett
+// riktigt spårningsnummer innan skarp lansering.
+function buildTrackingUrl(trackingNumber: string): string {
+  return `https://tracking.postnord.com/se/?id=${encodeURIComponent(trackingNumber)}`;
+}
+
+async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    console.log(
+      `[e-post] RESEND_API_KEY saknas — hoppar över mejl "${subject}" till ${to}. Lägg till RESEND_API_KEY i miljövariablerna för att aktivera riktiga mejl.`
+    );
+    return;
+  }
+
+  const from = process.env.RESEND_FROM_EMAIL || "Garnladan <bestallning@garnladan.se>";
+
+  try {
+    const res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to, subject, html }),
+    });
+    if (!res.ok) {
+      console.error(`[e-post] Resend svarade ${res.status} för mejl "${subject}" till ${to}`);
+    }
+  } catch (err) {
+    console.error(`[e-post] Kunde inte skicka mejl "${subject}"`, err);
+  }
+}
+
 function buildOrderEmailHtml(order: Order): string {
   const rows = order.items
     .map(
@@ -52,35 +89,45 @@ function buildOrderEmailHtml(order: Order): string {
 }
 
 export async function sendOrderConfirmationEmail(order: Order): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+  await sendEmail(
+    order.customer.email,
+    `Din beställning ${order.id} är mottagen`,
+    buildOrderEmailHtml(order)
+  );
+}
 
-  if (!apiKey) {
-    console.log(
-      `[e-post] RESEND_API_KEY saknas — hoppar över bekräftelsemejl för order ${order.id} till ${order.customer.email}. Lägg till RESEND_API_KEY i miljövariablerna för att aktivera riktiga mejl.`
-    );
-    return;
-  }
+function buildShippingEmailHtml(order: Order, trackingNumber: string): string {
+  const trackingUrl = buildTrackingUrl(trackingNumber);
 
-  const from = process.env.RESEND_FROM_EMAIL || "Garnladan <bestallning@garnladan.se>";
+  return `
+    <div style="font-family:sans-serif;color:#241C14">
+      <h1 style="font-size:20px">Din beställning ${order.id} är på väg!</h1>
+      <p>Hej ${order.customer.firstName}, din beställning har lämnat ladan och är skickad med PostNord.</p>
+      <p style="margin-top:16px">
+        Spårningsnummer: <strong>${trackingNumber}</strong><br />
+        <a href="${trackingUrl}" style="color:#A64B33">Följ paketet hos PostNord</a>
+      </p>
+      <p style="margin-top:20px;font-size:13px">
+        Ångrat dig? Du har 14 dagars ångerrätt —
+        <a href="${SITE_URL}/villkor/angerratt" style="color:#A64B33">läs mer och hämta ångerblanketten</a>.
+      </p>
+      <p style="margin-top:24px;color:#5E4C3A;font-size:13px">Detta är ett automatiskt mejl från Garnladan.</p>
+    </div>
+  `;
+}
 
-  try {
-    const res = await fetch(RESEND_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: order.customer.email,
-        subject: `Din beställning ${order.id} är mottagen`,
-        html: buildOrderEmailHtml(order),
-      }),
-    });
-    if (!res.ok) {
-      console.error(`[e-post] Resend svarade ${res.status} för order ${order.id}`);
-    }
-  } catch (err) {
-    console.error("[e-post] Kunde inte skicka bekräftelsemejl", err);
-  }
+/**
+ * Skickas automatiskt när admin sätter en order till "skickad" med ett
+ * spårningsnummer (se app/api/admin/orders/[id]/route.ts). Samma
+ * no-op-utan-nyckel-beteende som orderbekräftelsen ovan.
+ */
+export async function sendShippingNotificationEmail(
+  order: Order,
+  trackingNumber: string
+): Promise<void> {
+  await sendEmail(
+    order.customer.email,
+    `Din beställning ${order.id} är skickad`,
+    buildShippingEmailHtml(order, trackingNumber)
+  );
 }

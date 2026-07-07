@@ -8,9 +8,6 @@ export function formatPrice(amount: number): string {
   return sek.format(amount);
 }
 
-/** Fri frakt-gräns i SEK */
-export const FREE_SHIPPING_THRESHOLD = 499;
-
 /** Svensk momssats för garn/stickmaterial och frakt (25%). */
 export const VAT_RATE = 0.25;
 

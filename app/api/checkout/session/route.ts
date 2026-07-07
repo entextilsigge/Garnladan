@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProductBySlug } from "@/lib/data/productStore";
-import { SHIPPING_OPTIONS } from "@/lib/checkout";
-import { FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { SHIPPING_OPTIONS, calculateShippingCost } from "@/lib/checkout";
+import { getShippingSettings } from "@/lib/data/settingsStore";
 import { saveSession } from "@/lib/data/checkoutSessionStore";
 import { DEFAULT_ATTRIBUTION } from "@/lib/attribution";
 
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const shippingCost = subtotal < FREE_SHIPPING_THRESHOLD ? shippingOption.price : 0;
+  const shippingCost = calculateShippingCost(subtotal, shippingOption.id, getShippingSettings());
   const amount = subtotal + shippingCost;
 
   const sessionId = `mock_sess_${crypto.randomUUID()}`;

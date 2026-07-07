@@ -22,7 +22,7 @@ export function createOrderFromSession(
   const order: Order = {
     id: orderId,
     createdAt: new Date().toISOString(),
-    status: "mottagen",
+    status: "vantar_packning",
     paymentStatus,
     ...(paymentIntentId ? { paymentIntentId } : {}),
     customer: {

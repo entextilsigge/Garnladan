@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AngerFormular from "@/components/AngerFormular";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 export const metadata: Metadata = {
   title: "Ångerrätt",
@@ -67,7 +68,15 @@ export default function AngerrattPage() {
         </h2>
         <p className="text-mull leading-relaxed">
           Du står själv för returfrakten och ansvarar för varans skick
-          under returtransporten. Vi rekommenderar spårbar frakt.
+          under returtransporten. Vi rekommenderar spårbar frakt. Skicka
+          returen till:
+        </p>
+        <p className="text-mull leading-relaxed">
+          {COMPANY_INFO.name}
+          <br />
+          {COMPANY_INFO.returAddress.street}
+          <br />
+          {COMPANY_INFO.returAddress.postalCode} {COMPANY_INFO.returAddress.city}
         </p>
       </section>
 
