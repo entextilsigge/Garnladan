@@ -2,14 +2,14 @@ import Link from "next/link";
 import Newsletter from "@/components/Newsletter";
 import ProductCard from "@/components/ProductCard";
 import YarnImage from "@/components/YarnImage";
+import { getAllProducts, getNewProducts, getProductBySlug } from "@/lib/data/productStore";
 import {
   CATEGORY_DESCRIPTIONS,
   CATEGORY_LABELS,
-  getAllProducts,
-  getNewProducts,
-  getProductBySlug,
   type Category,
 } from "@/lib/products";
+
+export const dynamic = "force-dynamic";
 
 const HERO_SKEINS: { slug: string; colorIndex: number; className: string }[] = [
   { slug: "faro-svensk-ull", colorIndex: 0, className: "rotate-[-6deg]" },
@@ -35,10 +35,9 @@ const CATEGORY_SKEINS: Record<Category, { slug: string; colorIndex: number }> = 
 };
 
 export default function HomePage() {
+  const allProducts = getAllProducts();
   const newProducts = getNewProducts().slice(0, 4);
-  const popular = [...getAllProducts()]
-    .sort((a, b) => b.popularity - a.popularity)
-    .slice(0, 4);
+  const popular = [...allProducts].sort((a, b) => b.popularity - a.popularity).slice(0, 4);
 
   return (
     <>
@@ -47,7 +46,7 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-2 lg:gap-6 lg:px-8 lg:pb-24 lg:pt-20">
           <div className="animate-fade-up">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-tegel">
-              Garnbutik i Leksand sedan 2012
+              Rötterna i Tygladan, Vänersborg sedan 2000
             </p>
             <h1 className="mt-4 font-display text-4xl font-bold leading-[1.08] tracking-tight text-kol sm:text-5xl lg:text-6xl">
               Garn med själ,
@@ -191,39 +190,41 @@ export default function HomePage() {
               Om Garnladan
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold leading-tight text-kol sm:text-4xl">
-              En röd lada, tolv år av garn
-              <br className="hidden sm:block" /> och en enda regel:
-              <em className="italic text-tegel"> det ska kännas i handen.</em>
+              Det hela började i en lada.
             </h2>
             <div className="mt-6 max-w-xl space-y-4 text-[16px] leading-relaxed text-mull">
-              <p>
-                Garnladan började 2012 i en faluröd lada utanför Leksand, med
-                trettio härvor svensk ull och en övertygelse: garn köper man
-                inte med ögonen, utan med fingertopparna. Därför provstickar
-                vi varenda kvalitet innan den får plats på hyllorna.
+              <p className="text-lg font-medium text-kol">
+                Garnladan har sina rötter i Tygladan – tygbutiken Erik Norling
+                öppnade i en lada i Vänersborg år 2000. Samma filosofi, nytt
+                kapitel: nu samlar vi vårt garnsortiment i en egen butik,
+                online.
               </p>
               <p>
-                Idag skickar vi garn över hela Sverige — men varje beställning
-                packas fortfarande för hand i ladan, med ett handskrivet tack
-                och en liten bit garn att provsticka ur nästa favorit.
+                År 2000 öppnade Erik Norling en tygbutik i en gammal lada på
+                Östra vägen i Vänersborg, strax vid den lokala rondellen med
+                det automatiska fåret. Idén var enkel: köpa in stora partier
+                tyg — rester, konkurslager, överskott från möbelfabriker och
+                konfektionsindustrin — och sälja dem vidare till bra priser,
+                utan krångel. Kunder från hela Västra Götaland började hitta
+                hit för att handla kvalitetstyg i &quot;Ladan&quot;.
               </p>
-            </div>
-            <div className="mt-8 grid max-w-xl grid-cols-3 gap-4">
-              {[
-                ["12 år", "i branschen"],
-                ["20+", "utvalda kvaliteter"],
-                ["24 h", "packat & klart"],
-              ].map(([big, small]) => (
-                <div
-                  key={small}
-                  className="rounded-2xl bg-linne/70 px-4 py-5 text-center ring-1 ring-kol/5"
-                >
-                  <p className="font-display text-2xl font-bold text-tegel">{big}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-wider text-mull">
-                    {small}
-                  </p>
-                </div>
-              ))}
+              <p>
+                Det växte snabbt. Fler butiker öppnade i Huskvarna, Skövde och
+                Linköping, och varuhus i Morjärv och Vargön, där
+                huvudkontoret ligger idag. Genom åren har verksamheten alltid
+                handlat om samma sak: gott om material, ärliga priser, och
+                känslan av att hitta något bra i en lada full av möjligheter.
+              </p>
+              <h3 className="pt-2 font-display text-xl font-bold text-kol">
+                Garnladan är nästa kapitel.
+              </h3>
+              <p>
+                Efter mer än två decennier i fysisk butik tar vi nu steget
+                online — med ett eget fokus på garn. Samma filosofi som en
+                gång startade i en lada i Vänersborg: brett sortiment,
+                ärliga priser, och respekt för hantverket. Nu bara ett klick
+                bort.
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 lg:col-span-2">

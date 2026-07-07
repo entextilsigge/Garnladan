@@ -4,16 +4,34 @@ import { useState } from "react";
 
 export default function Newsletter() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "done" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setStatus("error");
+      setErrorMessage("Hmm, det där ser inte ut som en giltig e-postadress.");
       return;
     }
-    // UI-only: här kopplas riktig nyhetsbrevstjänst (Mailchimp/Rule) in senare.
-    setStatus("done");
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setStatus("error");
+        setErrorMessage(data?.error ?? "Något gick fel. Försök igen.");
+        return;
+      }
+      setStatus("done");
+    } catch {
+      setStatus("error");
+      setErrorMessage("Kunde inte nå servern. Försök igen.");
+    }
   }
 
   return (
@@ -55,16 +73,15 @@ export default function Newsletter() {
             />
             <button
               type="submit"
-              className="rounded-full bg-kol px-7 py-3.5 text-sm font-semibold text-krita transition-all hover:bg-gran active:scale-95"
+              disabled={status === "sending"}
+              className="rounded-full bg-kol px-7 py-3.5 text-sm font-semibold text-krita transition-all hover:bg-gran active:scale-95 disabled:opacity-70"
             >
-              Prenumerera
+              {status === "sending" ? "Skickar…" : "Prenumerera"}
             </button>
           </form>
         )}
         {status === "error" && (
-          <p className="mt-3 text-sm text-krita/90">
-            Hmm, det där ser inte ut som en giltig e-postadress.
-          </p>
+          <p className="mt-3 text-sm text-krita/90">{errorMessage}</p>
         )}
       </div>
     </section>

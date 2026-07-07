@@ -3,6 +3,7 @@ import { Fraunces, Karla } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CartDrawer from "@/components/CartDrawer";
+import UtmCapture from "@/components/UtmCapture";
 import { CartProvider } from "@/lib/cart";
 import "./globals.css";
 
@@ -23,11 +24,11 @@ const karla = Karla({
 
 export const metadata: Metadata = {
   title: {
-    default: "Garnladan — garn & stickmaterial från Leksand",
+    default: "Garnladan — garn & stickmaterial online",
     template: "%s · Garnladan",
   },
   description:
-    "Handplockat garn från en röd lada i Leksand: svensk ull, ekologisk bomull, lyxig alpacka och mohair. Fri frakt över 499 kr.",
+    "Garn och stickmaterial online, med rötterna i Tygladan i Vänersborg. Svensk ull, ekologisk bomull, lyxig alpacka och mohair. Fri frakt över 499 kr.",
 };
 
 export default function RootLayout({
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="sv" className={`${fraunces.variable} ${karla.variable}`}>
       <body>
+        <UtmCapture />
         <CartProvider>
           <Header />
           <main className="min-h-[60vh]">{children}</main>

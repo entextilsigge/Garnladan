@@ -13,6 +13,8 @@
 // Funktionssignaturerna nedan är designade för att inte behöva ändras.
 // ---------------------------------------------------------------------------
 
+import type { OrderAttribution } from "@/lib/data/orderStore";
+
 export type PaymentMethod = "kort" | "klarna";
 
 export interface ShippingDetails {
@@ -63,8 +65,8 @@ export const SHIPPING_OPTIONS: {
   },
   {
     id: "ladan",
-    label: "Hämta i ladan",
-    description: "Hämta i vår butik i Leksand — klar inom 2 timmar",
+    label: "Hämta i Vargön",
+    description: "Hämta i vårt lager i Vargön — klar inom 2 timmar",
     price: 0,
   },
 ];
@@ -77,6 +79,8 @@ export async function createCheckoutSession(input: {
   lines: CheckoutLineInput[];
   shipping: ShippingDetails;
   paymentMethod: PaymentMethod;
+  /** Marknadsföringsattribution insamlad från UTM-parametrar (se lib/attribution.ts). */
+  attribution?: OrderAttribution;
 }): Promise<CheckoutSession> {
   const res = await fetch("/api/checkout/session", {
     method: "POST",

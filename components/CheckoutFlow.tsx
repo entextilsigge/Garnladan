@@ -6,6 +6,7 @@ import { useState } from "react";
 import YarnImage from "@/components/YarnImage";
 import { useCart } from "@/lib/cart";
 import { formatPrice, FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { readStoredAttribution } from "@/lib/attribution";
 import {
   createCheckoutSession,
   confirmPayment,
@@ -85,6 +86,7 @@ export default function CheckoutFlow() {
         })),
         shipping,
         paymentMethod,
+        attribution: readStoredAttribution(),
       });
       // 2. Bekräfta betalningen (här sker redirect till Stripe/Klarna i verkligheten)
       const confirmation = await confirmPayment(session.sessionId);

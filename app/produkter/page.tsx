@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import ProductListing from "@/components/ProductListing";
+import { getAllProducts } from "@/lib/data/productStore";
 import { CATEGORY_LABELS, type Category } from "@/lib/products";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
-  title: "Allt garn",
+  title: "Allt garn — sortiment",
   description:
-    "Utforska hela Garnladans sortiment: svensk ull, ekologisk bomull, sockgarn och exklusiva kvaliteter. Filtrera på material, tjocklek och färg.",
+    "Utforska hela Garnladans sortiment: svensk ull, ekologisk bomull, sockgarn och exklusiva kvaliteter som mohair och kashmir. Filtrera på material, tjocklek och färg.",
 };
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[];
@@ -22,6 +25,7 @@ export default function ProductsPage({
   const sort = VALID_SORTS.includes(searchParams.sortering as (typeof VALID_SORTS)[number])
     ? (searchParams.sortering as (typeof VALID_SORTS)[number])
     : undefined;
+  const products = getAllProducts();
 
   return (
     <>
@@ -43,6 +47,7 @@ export default function ProductsPage({
       <div className="pt-8">
         <ProductListing
           key={`${category ?? "alla"}-${sort ?? "std"}`}
+          products={products}
           initialCategory={category}
           initialSort={sort}
         />

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { getProductBySlug } from "@/lib/products";
+import { getProductBySlug } from "@/lib/data/productStore";
 import { SHIPPING_OPTIONS } from "@/lib/checkout";
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/format";
+import { saveSession } from "@/lib/data/checkoutSessionStore";
+import { DEFAULT_ATTRIBUTION } from "@/lib/attribution";
 
 // ---------------------------------------------------------------------------
 // MOCK: skapa checkout-session.
@@ -28,7 +30,15 @@ export async function POST(request: Request) {
     );
   }
 
-  let amount = 0;
+  let subtotal = 0;
+  const resolvedItems: {
+    slug: string;
+    name: string;
+    colorName: string;
+    quantity: number;
+    unitPrice: number;
+  }[] = [];
+
   for (const line of body.lines) {
     const product = getProductBySlug(line.slug);
     if (!product || typeof line.quantity !== "number" || line.quantity < 1) {
@@ -37,7 +47,14 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    amount += product.price * line.quantity;
+    subtotal += product.price * line.quantity;
+    resolvedItems.push({
+      slug: product.slug,
+      name: product.name,
+      colorName: line.colorName,
+      quantity: line.quantity,
+      unitPrice: product.price,
+    });
   }
 
   const shippingOption = SHIPPING_OPTIONS.find(
@@ -49,11 +66,31 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (amount < FREE_SHIPPING_THRESHOLD) {
-    amount += shippingOption.price;
-  }
+
+  const shippingCost = subtotal < FREE_SHIPPING_THRESHOLD ? shippingOption.price : 0;
+  const amount = subtotal + shippingCost;
 
   const sessionId = `mock_sess_${crypto.randomUUID()}`;
+
+  // Sparar underlaget för ordern så /api/checkout/confirm kan slutföra den
+  // (skapa en order för adminvyn, skicka bekräftelsemejl) utan att behöva
+  // räkna om priset ovan — motsvarar hur Stripe/Klarna redan håller reda på
+  // en sessions innehåll internt.
+  saveSession({
+    sessionId,
+    createdAt: new Date().toISOString(),
+    items: resolvedItems,
+    shipping: body.shipping,
+    paymentMethod: body.paymentMethod,
+    subtotal,
+    shippingCost,
+    amount,
+    attribution: {
+      source: body.attribution?.source || DEFAULT_ATTRIBUTION.source,
+      medium: body.attribution?.medium || DEFAULT_ATTRIBUTION.medium,
+      campaign: body.attribution?.campaign || DEFAULT_ATTRIBUTION.campaign,
+    },
+  });
 
   return NextResponse.json({ sessionId, amount, currency: "SEK" });
 }

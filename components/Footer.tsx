@@ -7,8 +7,9 @@ export default function Footer() {
         <div className="max-w-xs">
           <p className="font-display text-2xl font-bold text-krita">Garnladan</p>
           <p className="mt-3 text-sm leading-relaxed">
-            Handplockat garn från en röd lada i Leksand. Vi tror på material
-            som håller, färger som glöder och stickning som får ta tid.
+            Garnladan har sina rötter i Tygladan i Vänersborg. Vi tror på
+            material som håller, färger som glöder och stickning som får ta
+            tid.
           </p>
         </div>
         <div>
@@ -38,8 +39,8 @@ export default function Footer() {
             Hitta till ladan
           </p>
           <address className="mt-4 space-y-2.5 text-sm not-italic leading-relaxed">
-            <p>Garnladan AB<br />Siljansvägen 12<br />793 31 Leksand</p>
-            <p>hej@garnladan.se<br />0247-123 45</p>
+            <p>Garnladan AB<br />Vargön</p>
+            <p>hej@garnladan.se<br />0521-123 45</p>
           </address>
         </div>
       </div>

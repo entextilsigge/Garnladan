@@ -1,0 +1,174 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { formatPrice } from "@/lib/format";
+import type { Order, OrderStatus } from "@/lib/data/orderStore";
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  mottagen: "Mottagen",
+  skickad: "Skickad",
+  levererad: "Levererad",
+};
+
+const STATUS_STYLES: Record<OrderStatus, string> = {
+  mottagen: "bg-senap/15 text-senap-dark",
+  skickad: "bg-gran/10 text-gran",
+  levererad: "bg-linne text-mull",
+};
+
+export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] }) {
+  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "alla">("alla");
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const filtered = useMemo(() => {
+    let list = orders;
+    if (statusFilter !== "alla") list = list.filter((o) => o.status === statusFilter);
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.id.toLowerCase().includes(q) ||
+          `${o.customer.firstName} ${o.customer.lastName}`.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [orders, query, statusFilter]);
+
+  async function handleStatusChange(order: Order, status: OrderStatus) {
+    setUpdatingId(order.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? "Kunde inte uppdatera status.");
+        return;
+      }
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? data.order : o)));
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  return (
+    <div>
+      {error && (
+        <p className="mb-4 rounded-2xl bg-tegel/10 px-5 py-3.5 text-sm font-medium text-tegel-dark">
+          {error}
+        </p>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          ["Beställningar", String(orders.length)],
+          ["Mottagna", String(orders.filter((o) => o.status === "mottagen").length)],
+          ["Omsättning", formatPrice(orders.reduce((s, o) => s + o.total, 0))],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-white/70 px-5 py-4 ring-1 ring-kol/5">
+            <p className="text-xs font-medium uppercase tracking-wider text-mull">{label}</p>
+            <p className="mt-1 font-display text-2xl font-bold text-kol">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          placeholder="Sök på ordernummer eller kund…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full max-w-xs rounded-full border border-kol/15 bg-white px-5 py-2.5 text-sm focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "alla")}
+          className="rounded-full border border-kol/15 bg-white px-4 py-2.5 text-sm font-medium text-kol focus:outline-none focus:ring-2 focus:ring-tegel/25"
+        >
+          <option value="alla">Alla statusar</option>
+          {(Object.keys(STATUS_LABELS) as OrderStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-5 overflow-x-auto rounded-2xl bg-white/70 ring-1 ring-kol/5">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-kol/10 text-xs uppercase tracking-wider text-mull">
+              <th className="px-5 py-3.5 font-semibold">Order</th>
+              <th className="px-5 py-3.5 font-semibold">Datum</th>
+              <th className="px-5 py-3.5 font-semibold">Kund</th>
+              <th className="px-5 py-3.5 font-semibold">Rader</th>
+              <th className="px-5 py-3.5 text-right font-semibold">Totalt</th>
+              <th className="px-5 py-3.5 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-kol/[0.06]">
+            {filtered.map((o) => (
+              <tr key={o.id} className="align-top transition-colors hover:bg-linne/40">
+                <td className="px-5 py-3.5 font-mono text-xs font-medium text-kol">{o.id}</td>
+                <td className="px-5 py-3.5 text-mull">
+                  {new Date(o.createdAt).toLocaleString("sv-SE", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </td>
+                <td className="px-5 py-3.5">
+                  <p className="font-medium text-kol">
+                    {o.customer.firstName} {o.customer.lastName}
+                  </p>
+                  <p className="text-xs text-mull">{o.customer.email}</p>
+                  <p className="text-xs text-mull">
+                    {o.customer.postalCode} {o.customer.city}
+                  </p>
+                </td>
+                <td className="px-5 py-3.5 text-mull">
+                  <ul className="space-y-0.5">
+                    {o.items.map((item, i) => (
+                      <li key={i} className="text-xs">
+                        {item.name} · {item.colorName} × {item.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+                <td className="px-5 py-3.5 text-right font-medium text-kol">
+                  {formatPrice(o.total)}
+                </td>
+                <td className="px-5 py-3.5">
+                  <select
+                    value={o.status}
+                    disabled={updatingId === o.id}
+                    onChange={(e) => handleStatusChange(o, e.target.value as OrderStatus)}
+                    className={`rounded-full border-0 px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-tegel/40 ${STATUS_STYLES[o.status]}`}
+                  >
+                    {(Object.keys(STATUS_LABELS) as OrderStatus[]).map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-5 py-8 text-center text-mull">
+                  Inga beställningar matchade.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

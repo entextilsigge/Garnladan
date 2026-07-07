@@ -7,7 +7,6 @@ import {
   COLOR_GROUP_SWATCHES,
   FIBER_LABELS,
   WEIGHT_LABELS,
-  getAllProducts,
   type Category,
   type ColorGroup,
   type Fiber,
@@ -56,9 +55,11 @@ function sortProducts(products: Product[], sort: SortKey): Product[] {
 }
 
 export default function ProductListing({
+  products,
   initialCategory,
   initialSort,
 }: {
+  products: Product[];
   initialCategory?: Category;
   initialSort?: SortKey;
 }) {
@@ -73,7 +74,7 @@ export default function ProductListing({
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const filtered = useMemo(() => {
-    let result = getAllProducts();
+    let result = products;
     if (category) result = result.filter((p) => p.category === category);
     if (materials.length > 0) {
       const activeFibers = new Set(
@@ -88,7 +89,7 @@ export default function ProductListing({
       result = result.filter((p) => p.colorways.some((c) => colors.includes(c.group)));
     }
     return sortProducts(result, sort);
-  }, [category, materials, weights, colors, sort]);
+  }, [products, category, materials, weights, colors, sort]);
 
   const activeFilterCount = materials.length + weights.length + colors.length;
 

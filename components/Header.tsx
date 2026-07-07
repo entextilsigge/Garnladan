@@ -19,7 +19,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-kol/10 bg-krita/90 backdrop-blur-md">
       <div className="bg-gran py-1.5 text-center text-xs font-medium tracking-wide text-krita/90">
-        Fri frakt över 499 kr · Skickas inom 24 timmar · Handplockat i Leksand
+        Fri frakt över 499 kr · Skickas inom 24 timmar · Rötterna i Vänersborg sedan 2000
       </div>
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="group flex items-baseline gap-2">

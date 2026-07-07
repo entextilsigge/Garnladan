@@ -10,17 +10,33 @@ export default function ProductCard({
   product: Product;
   priority?: boolean;
 }) {
+  const allSoldOut = product.colorways.every((c) => c.stock <= 0);
+
   return (
     <Link
       href={`/produkt/${product.slug}`}
       className="group flex flex-col overflow-hidden rounded-2xl bg-white/70 shadow-mjuk ring-1 ring-kol/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lyft"
     >
       <div className="relative aspect-square overflow-hidden">
-        <YarnImage
-          colorway={product.colorways[0]}
-          seed={product.slug}
-          className="h-full w-full transition-transform duration-500 ease-out group-hover:scale-[1.045]"
-        />
+        {product.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.045]"
+          />
+        ) : (
+          <YarnImage
+            colorway={product.colorways[0]}
+            seed={product.slug}
+            className="h-full w-full transition-transform duration-500 ease-out group-hover:scale-[1.045]"
+          />
+        )}
+        {allSoldOut && (
+          <span className="absolute bottom-4 left-4 rounded-full bg-kol/85 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-krita">
+            Slut i lager
+          </span>
+        )}
         {product.isNew && (
           <span className="absolute left-4 top-4 rounded-full bg-gran px-3 py-1 text-xs font-semibold uppercase tracking-widest text-krita">
             Nyhet
@@ -52,7 +68,7 @@ export default function ProductCard({
               <span
                 key={c.name}
                 title={c.name}
-                className="h-4 w-4 rounded-full ring-2 ring-krita"
+                className={`h-4 w-4 rounded-full ring-2 ring-krita ${c.stock <= 0 ? "opacity-30" : ""}`}
                 style={{ backgroundColor: c.hex }}
               />
             ))}

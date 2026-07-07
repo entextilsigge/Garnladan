@@ -3,16 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ProductCard from "@/components/ProductCard";
 import ProductDetail from "@/components/ProductDetail";
-import {
-  CATEGORY_LABELS,
-  getAllProducts,
-  getProductBySlug,
-  getRelatedProducts,
-} from "@/lib/products";
+import { getProductBySlug, getRelatedProducts } from "@/lib/data/productStore";
+import { CATEGORY_LABELS } from "@/lib/products";
 
-export function generateStaticParams() {
-  return getAllProducts().map((p) => ({ slug: p.slug }));
-}
+export const dynamic = "force-dynamic";
 
 export function generateMetadata({
   params,
@@ -22,8 +16,8 @@ export function generateMetadata({
   const product = getProductBySlug(params.slug);
   if (!product) return { title: "Produkten hittades inte" };
   return {
-    title: product.name,
-    description: `${product.tagline}. ${product.composition}, ${product.meterage} m / ${product.grams} g. Köp hos Garnladan — fri frakt över 499 kr.`,
+    title: `${product.name} — ${CATEGORY_LABELS[product.category]}`,
+    description: `${product.tagline}. ${product.composition}, ${product.meterage} m / ${product.grams} g, rek. sticka ${product.needleSize}. Köp hos Garnladan — fri frakt över 499 kr.`,
   };
 }
 

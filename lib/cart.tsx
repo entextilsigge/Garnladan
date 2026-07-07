@@ -1,8 +1,9 @@
 "use client";
 
 // Varukorgens tillstånd. Lagras i localStorage så korgen överlever
-// sidladdningar. Endast slug + färgnamn + antal sparas — produktdata slås
-// alltid upp färskt via lib/products så priser aldrig blir inaktuella.
+// sidladdningar. Endast slug + färgnamn + antal sparas — produktkatalogen
+// (inkl. aktuellt lagersaldo) hämtas separat via GET /api/products, eftersom
+// klientkod inte kan importera den fs-baserade produktbutiken direkt.
 
 import {
   createContext,
@@ -13,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getProductBySlug, type Colorway, type Product } from "@/lib/products";
+import type { Colorway, Product } from "@/lib/products";
 
 export interface CartItem {
   slug: string;
@@ -66,6 +67,7 @@ function readStoredCart(): CartItem[] {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [catalog, setCatalog] = useState<Product[]>([]);
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -75,9 +77,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    fetch("/api/products")
+      .then((res) => (res.ok ? res.json() : { products: [] }))
+      .then((data) => setCatalog(Array.isArray(data.products) ? data.products : []))
+      .catch(() => setCatalog([]));
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items, hydrated]);
+
+  // Lagersaldo för en färgvariant. Innan katalogen hunnit laddas returneras
+  // Infinity (okänt lager) så vi inte felaktigt blockerar en tillagd vara.
+  const getStock = useCallback(
+    (slug: string, colorName: string): number => {
+      const product = catalog.find((p) => p.slug === slug);
+      const colorway = product?.colorways.find((c) => c.name === colorName);
+      return colorway?.stock ?? Infinity;
+    },
+    [catalog]
+  );
 
   const addItem = useCallback(
     (slug: string, colorName: string, quantity = 1) => {
@@ -85,31 +105,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const existing = prev.find(
           (i) => i.slug === slug && i.colorName === colorName
         );
+        const stock = getStock(slug, colorName);
         if (existing) {
-          return prev.map((i) =>
-            i === existing ? { ...i, quantity: i.quantity + quantity } : i
-          );
+          const nextQuantity = Math.min(existing.quantity + quantity, stock);
+          return prev.map((i) => (i === existing ? { ...i, quantity: nextQuantity } : i));
         }
-        return [...prev, { slug, colorName, quantity }];
+        return [...prev, { slug, colorName, quantity: Math.min(quantity, stock) }];
       });
       setDrawerOpen(true);
     },
-    []
+    [getStock]
   );
 
   const setQuantity = useCallback(
     (slug: string, colorName: string, quantity: number) => {
-      setItems((prev) =>
-        quantity <= 0
+      setItems((prev) => {
+        const capped = Math.min(quantity, getStock(slug, colorName));
+        return capped <= 0
           ? prev.filter((i) => !(i.slug === slug && i.colorName === colorName))
           : prev.map((i) =>
               i.slug === slug && i.colorName === colorName
-                ? { ...i, quantity }
+                ? { ...i, quantity: capped }
                 : i
-            )
-      );
+            );
+      });
     },
-    []
+    [getStock]
   );
 
   const removeItem = useCallback((slug: string, colorName: string) => {
@@ -124,7 +145,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const lines = useMemo<CartLine[]>(() => {
     return items.flatMap((item) => {
-      const product = getProductBySlug(item.slug);
+      const product = catalog.find((p) => p.slug === item.slug);
       if (!product) return [];
       const colorway =
         product.colorways.find((c) => c.name === item.colorName) ??
@@ -138,7 +159,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         },
       ];
     });
-  }, [items]);
+  }, [items, catalog]);
 
   const value = useMemo<CartContextValue>(
     () => ({
