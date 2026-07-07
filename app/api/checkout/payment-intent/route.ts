@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getStripeClient, isStripeConfigured } from "@/lib/stripe";
 import { consumeSession, peekSession } from "@/lib/data/checkoutSessionStore";
+import { adjustColorwayStock, reserveStockForItems } from "@/lib/data/productStore";
 import { createOrderFromSession, generateOrderId } from "@/lib/orders";
+import { logError } from "@/lib/data/errorLogStore";
 
 // ---------------------------------------------------------------------------
 // Skapar en riktig Stripe PaymentIntent för en redan skapad checkout-session
@@ -49,6 +51,15 @@ export async function POST(request: Request) {
     );
   }
 
+  // Kontrollera och minska lagret ATOMÄRT innan Stripe ens kontaktas — annars
+  // kan vi hinna dra ett kort för varor som inte längre finns, och två
+  // samtidiga köp av samma sista enhet skulle kunna gå igenom. Se
+  // reserveStockForItems för varför detta är race-safe.
+  const reservation = reserveStockForItems(session.items);
+  if (!reservation.ok) {
+    return NextResponse.json({ error: reservation.error }, { status: 409 });
+  }
+
   const orderId = generateOrderId();
   const stripe = getStripeClient();
 
@@ -65,6 +76,16 @@ export async function POST(request: Request) {
       metadata: { orderId },
     });
   } catch (err) {
+    // Stripe-anropet misslyckades EFTER att lagret redan reserverats — lägg
+    // tillbaka det, annars är varorna permanent låsta utan att någon order
+    // någonsin skapades.
+    for (const item of session.items) {
+      adjustColorwayStock(item.slug, item.colorName, item.quantity);
+    }
+    logError(
+      err instanceof Error ? err.message : "Okänt fel vid PaymentIntent-skapande",
+      "checkout/payment-intent"
+    );
     return NextResponse.json(
       {
         error:

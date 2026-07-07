@@ -4,6 +4,7 @@ import { isAuthorizedRequest } from "@/lib/adminAuth";
 import { getOrderById, recordRefund, markItemsRestocked } from "@/lib/data/orderStore";
 import { adjustColorwayStock } from "@/lib/data/productStore";
 import { sendRefundConfirmationEmail } from "@/lib/email";
+import { logError } from "@/lib/data/errorLogStore";
 
 // ---------------------------------------------------------------------------
 // Riktig återbetalning mot Stripe (stripe.refunds.create), inte bara en
@@ -79,6 +80,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       amount: Math.round(amount * 100),
     });
   } catch (err) {
+    logError(
+      err instanceof Error ? err.message : "Okänt fel vid återbetalning",
+      `admin/orders/${params.id}/refund`
+    );
     return NextResponse.json(
       {
         error:

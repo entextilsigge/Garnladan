@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { consumeSession } from "@/lib/data/checkoutSessionStore";
+import { consumeSession, peekSession } from "@/lib/data/checkoutSessionStore";
+import { reserveStockForItems } from "@/lib/data/productStore";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { createOrderFromSession, generateOrderId } from "@/lib/orders";
 
@@ -27,13 +28,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const session = consumeSession(body.sessionId);
+  // Icke-destruktiv läsning innan lagret kontrolleras — sessionen konsumeras
+  // (tas bort) bara om vi faktiskt går vidare, se samma resonemang i
+  // app/api/checkout/payment-intent/route.ts.
+  const session = peekSession(body.sessionId);
   if (!session) {
     return NextResponse.json(
       { error: "Sessionen hittades inte eller har redan använts." },
       { status: 400 }
     );
   }
+
+  // Kontrollera och minska lagret ATOMÄRT innan ordern slutförs — annars
+  // kan två samtidiga köp av samma sista enhet båda lyckas. Se
+  // reserveStockForItems för varför detta är race-safe.
+  const reservation = reserveStockForItems(session.items);
+  if (!reservation.ok) {
+    return NextResponse.json({ error: reservation.error }, { status: 409 });
+  }
+
+  consumeSession(body.sessionId);
 
   // Simulera kort handläggningstid hos betalleverantören
   await new Promise((resolve) => setTimeout(resolve, 900));

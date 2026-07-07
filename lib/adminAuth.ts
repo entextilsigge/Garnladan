@@ -23,6 +23,46 @@ const SALT = "garnladan-admin-salt-v1";
 export const ADMIN_COOKIE_NAME = "garnladan_admin";
 export const ADMIN_COOKIE_MAX_AGE = 60 * 60 * 8; // 8 timmar
 
+// ---------------------------------------------------------------------------
+// Enkel inloggningsspärr — admin-auth är fortfarande bara ett delat
+// lösenord utan kontosystem, så utan detta kan någon skriptat prova
+// lösenord i all oändlighet. In-memory (samma begränsning som
+// lib/rateLimit.ts: delas inte mellan serverless-instanser, nollställs vid
+// cold start) — räcker för att stoppa naiv brute force lokalt/på en
+// enskild instans.
+// ---------------------------------------------------------------------------
+
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 5 * 60 * 1000; // 5 minuter
+
+interface LoginAttempts {
+  failures: number;
+  lockedUntil: number;
+}
+
+const loginAttemptsByIp = new Map<string, LoginAttempts>();
+
+/** Sekunder kvar av spärren, eller 0 om inloggning inte är spärrad just nu. */
+export function loginLockoutSecondsRemaining(ip: string): number {
+  const entry = loginAttemptsByIp.get(ip);
+  if (!entry || entry.lockedUntil <= Date.now()) return 0;
+  return Math.ceil((entry.lockedUntil - Date.now()) / 1000);
+}
+
+export function recordFailedLogin(ip: string): void {
+  const entry = loginAttemptsByIp.get(ip) ?? { failures: 0, lockedUntil: 0 };
+  entry.failures += 1;
+  if (entry.failures >= MAX_FAILED_ATTEMPTS) {
+    entry.lockedUntil = Date.now() + LOCKOUT_MS;
+    entry.failures = 0;
+  }
+  loginAttemptsByIp.set(ip, entry);
+}
+
+export function clearLoginAttempts(ip: string): void {
+  loginAttemptsByIp.delete(ip);
+}
+
 function getConfiguredPassword(): string {
   const fromEnv = process.env.ADMIN_PASSWORD?.trim();
   if (fromEnv) return fromEnv;

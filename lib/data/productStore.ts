@@ -186,6 +186,50 @@ export function adjustColorwayStock(slug: string, colorName: string, delta: numb
   writeAll(all);
 }
 
+/**
+ * Atomär kontroll-och-minska-operation för en hel orderkorg: läser lagret
+ * EN gång, kontrollerar att samtliga rader har täckning, och minskar sedan
+ * samtliga i samma skrivning — allt inom en enda synkron funktion (bara
+ * synkrona fs-anrop, inget `await` mellan läsning och skrivning).
+ *
+ * Det där är precis vad som gör den race-safe: Node.js kör JavaScript
+ * entrådigt, och synkrona fs-anrop blockerar hela event-loopen tills de är
+ * klara. Två requests som "samtidigt" försöker köpa den sista enheten kan
+ * alltså aldrig interleava mitt i den här funktionen inom samma process —
+ * den ena körs helt klart innan den andra ens börjar. (Detta håller INTE
+ * över flera samtidiga serverless-instanser/processer — se filhuvudets
+ * OBS om Vercel — men matchar den nivå av garanti hela JSON-fil-lagret
+ * redan bygger på, och räcker gott för en enskild instans/lokal drift.)
+ *
+ * Allt-eller-inget: om NÅGON rad saknar täckning skrivs INGENTING, och ett
+ * tydligt fel returneras så anroparen kan visa det i kassan istället för
+ * att låta ordern gå igenom med negativt lager.
+ */
+export function reserveStockForItems(
+  items: { slug: string; colorName: string; quantity: number; name?: string }[]
+): { ok: true } | { ok: false; error: string } {
+  const all = readAll();
+
+  for (const item of items) {
+    const product = all.find((p) => p.slug === item.slug);
+    const colorway = product?.colorways.find((c) => c.name === item.colorName);
+    if (!colorway || colorway.stock < item.quantity) {
+      return {
+        ok: false,
+        error: `${item.name ?? item.slug} (${item.colorName}) finns tyvärr inte i tillräckligt antal längre — lagret har ändrats sedan du lade den i varukorgen.`,
+      };
+    }
+  }
+
+  for (const item of items) {
+    const product = all.find((p) => p.slug === item.slug)!;
+    const colorway = product.colorways.find((c) => c.name === item.colorName)!;
+    colorway.stock -= item.quantity;
+  }
+  writeAll(all);
+  return { ok: true };
+}
+
 /** Tar bort en bildreferens ur produkten och returnerar den borttagna bilden (för Blob-radering) tillsammans med produkten. */
 export function removeProductImage(
   id: string,

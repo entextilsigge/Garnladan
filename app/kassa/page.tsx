@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import CheckoutErrorBoundary from "@/components/CheckoutErrorBoundary";
 import CheckoutFlow from "@/components/CheckoutFlow";
 
 export const metadata: Metadata = {
@@ -18,7 +19,9 @@ export default function CheckoutPage() {
         Tryggt köp med 30 dagars öppet köp och snabb leverans från ladan.
       </p>
       <div className="mt-8">
-        <CheckoutFlow />
+        <CheckoutErrorBoundary>
+          <CheckoutFlow />
+        </CheckoutErrorBoundary>
       </div>
     </div>
   );

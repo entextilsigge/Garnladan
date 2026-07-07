@@ -6,11 +6,12 @@ import ProductsPanel from "@/components/admin/ProductsPanel";
 import OrdersPanel from "@/components/admin/OrdersPanel";
 import AnalyticsPanel from "@/components/admin/analytics/AnalyticsPanel";
 import SettingsPanel from "@/components/admin/SettingsPanel";
+import ErrorLogPanel from "@/components/admin/ErrorLogPanel";
 import type { Product } from "@/lib/products";
 import type { Order } from "@/lib/data/orderStore";
 import type { ShippingSettings } from "@/lib/checkout";
 
-type Tab = "produkter" | "bestallningar" | "statistik" | "installningar";
+type Tab = "produkter" | "bestallningar" | "statistik" | "installningar" | "felloggen";
 
 export default function AdminDashboard({
   initialProducts,
@@ -82,6 +83,14 @@ export default function AdminDashboard({
         >
           Inställningar
         </button>
+        <button
+          onClick={() => setTab("felloggen")}
+          className={`rounded-full px-5 py-2.5 text-sm font-medium transition-all ${
+            tab === "felloggen" ? "bg-kol text-krita" : "bg-linne text-mull hover:text-kol"
+          }`}
+        >
+          Felloggen
+        </button>
       </div>
 
       <div className="mt-6">
@@ -89,6 +98,7 @@ export default function AdminDashboard({
         {tab === "bestallningar" && <OrdersPanel initialOrders={initialOrders} />}
         {tab === "statistik" && <AnalyticsPanel />}
         {tab === "installningar" && <SettingsPanel initialSettings={initialSettings} />}
+        {tab === "felloggen" && <ErrorLogPanel />}
       </div>
     </div>
   );

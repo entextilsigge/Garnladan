@@ -1,6 +1,7 @@
 import type { Order } from "@/lib/data/orderStore";
 import { calculateVatAmount } from "@/lib/format";
 import { SITE_URL } from "@/lib/seo";
+import { escapeHtml } from "@/lib/sanitize";
 
 // ---------------------------------------------------------------------------
 // Bekräftelsemejl via Resend (https://resend.com).
@@ -56,7 +57,7 @@ function buildOrderEmailHtml(order: Order): string {
   const rows = order.items
     .map(
       (item) =>
-        `<tr><td style="padding:4px 12px 4px 0">${item.name} · ${item.colorName}</td><td style="padding:4px 0;text-align:right">${item.quantity} st</td></tr>`
+        `<tr><td style="padding:4px 12px 4px 0">${escapeHtml(item.name)} · ${escapeHtml(item.colorName)}</td><td style="padding:4px 0;text-align:right">${item.quantity} st</td></tr>`
     )
     .join("");
 
@@ -66,7 +67,7 @@ function buildOrderEmailHtml(order: Order): string {
 
   return `
     <div style="font-family:sans-serif;color:#241C14">
-      <h1 style="font-size:20px">Tack ${order.customer.firstName}, din beställning är mottagen!</h1>
+      <h1 style="font-size:20px">Tack ${escapeHtml(order.customer.firstName)}, din beställning är mottagen!</h1>
       <p>Ordernummer <strong>${order.id}</strong>. Vi packar din beställning inom 24 timmar.</p>
       <table style="border-collapse:collapse;margin-top:16px">${rows}</table>
       <table style="border-collapse:collapse;margin-top:16px;width:100%;max-width:320px">
@@ -98,9 +99,9 @@ function buildShippingEmailHtml(order: Order, trackingNumber: string): string {
   return `
     <div style="font-family:sans-serif;color:#241C14">
       <h1 style="font-size:20px">Din beställning ${order.id} är på väg!</h1>
-      <p>Hej ${order.customer.firstName}, din beställning har lämnat ladan och är skickad med PostNord.</p>
+      <p>Hej ${escapeHtml(order.customer.firstName)}, din beställning har lämnat ladan och är skickad med PostNord.</p>
       <p style="margin-top:16px">
-        Spårningsnummer: <strong>${trackingNumber}</strong><br />
+        Spårningsnummer: <strong>${escapeHtml(trackingNumber)}</strong><br />
         <a href="${trackingUrl}" style="color:#A64B33">Följ paketet hos PostNord</a>
       </p>
       <p style="margin-top:20px;font-size:13px">
@@ -133,7 +134,7 @@ function buildRefundEmailHtml(order: Order, amount: number): string {
   return `
     <div style="font-family:sans-serif;color:#241C14">
       <h1 style="font-size:20px">Din återbetalning är genomförd</h1>
-      <p>Hej ${order.customer.firstName}, vi har återbetalat ${amount} kr för beställning <strong>${order.id}</strong>.</p>
+      <p>Hej ${escapeHtml(order.customer.firstName)}, vi har återbetalat ${amount} kr för beställning <strong>${order.id}</strong>.</p>
       <p style="margin-top:12px">
         ${isFullRefund
           ? "Hela ordersumman är nu återbetald."

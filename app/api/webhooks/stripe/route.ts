@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripeClient, isStripeConfigured } from "@/lib/stripe";
 import { getOrderById, updatePaymentMethod, updatePaymentStatus } from "@/lib/data/orderStore";
+import { hasProcessedEvent, markEventProcessed } from "@/lib/data/webhookEventStore";
+import { logError } from "@/lib/data/errorLogStore";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 
 // ---------------------------------------------------------------------------
@@ -18,6 +20,21 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 //   2. URL: https://<din-domän>/api/webhooks/stripe
 //   3. Prenumerera på: payment_intent.succeeded, payment_intent.payment_failed
 //   4. Kopiera "Signing secret" till miljövariabeln STRIPE_WEBHOOK_SECRET
+//
+// IDEMPOTENS: Stripe garanterar inte "exactly once"-leverans — samma
+// event.id kan komma flera gånger (retry vid timeout, nätverksstrul innan
+// vårt 200-svar hinner fram, etc). Utan spärren nedan skulle en upprepad
+// payment_intent.succeeded kunna skicka dubbla bekräftelsemejl. Se
+// lib/data/webhookEventStore.ts.
+//
+// KÄND BEGRÄNSNING: lagret som reserverades vid PaymentIntent-skapande (se
+// app/api/checkout/payment-intent/route.ts) läggs INTE automatiskt tillbaka
+// om betalningen misslyckas här — en PaymentIntent kan få flera
+// betalförsök (kunden provar ett nytt kort efter ett avvisat), så en
+// automatisk återläggning vid payment_intent.payment_failed riskerar att
+// lagret läggs tillbaka en gång för mycket om kunden sedan lyckas på ett
+// senare försök. Hanteras manuellt av admin vid behov (redigera lagersaldo
+// i produktformuläret) tills ett mer robust per-försök-flöde byggs.
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
@@ -42,24 +59,45 @@ export async function POST(request: Request) {
     );
   } catch (err) {
     console.error("[stripe-webhook] Ogiltig signatur", err);
+    logError(
+      err instanceof Error ? err.message : "Ogiltig webhook-signatur",
+      "webhooks/stripe:signature"
+    );
     return NextResponse.json({ error: "Ogiltig signatur." }, { status: 400 });
   }
 
-  if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
-    const paymentIntent = event.data.object as Stripe.PaymentIntent;
-    const orderId = paymentIntent.metadata?.orderId;
-
-    if (orderId && getOrderById(orderId)) {
-      const status = event.type === "payment_intent.succeeded" ? "paid" : "failed";
-      const updated = updatePaymentStatus(orderId, status);
-      if (updated && status === "paid") {
-        const method = await resolveActualPaymentMethod(paymentIntent.id);
-        if (method) updatePaymentMethod(orderId, method);
-        await sendOrderConfirmationEmail(updated);
-      }
-    }
+  // Redan hanterad — svara 200 direkt utan att köra logiken igen (annars
+  // riskeras dubbla bekräftelsemejl eller dubbla effekter).
+  if (hasProcessedEvent(event.id)) {
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
+  try {
+    if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      const orderId = paymentIntent.metadata?.orderId;
+
+      if (orderId && getOrderById(orderId)) {
+        const status = event.type === "payment_intent.succeeded" ? "paid" : "failed";
+        const updated = updatePaymentStatus(orderId, status);
+        if (updated && status === "paid") {
+          const method = await resolveActualPaymentMethod(paymentIntent.id);
+          if (method) updatePaymentMethod(orderId, method);
+          await sendOrderConfirmationEmail(updated);
+        }
+      }
+    }
+  } catch (err) {
+    logError(
+      err instanceof Error ? err.message : "Okänt fel vid hantering av Stripe-webhook",
+      `webhooks/stripe:${event.type}`
+    );
+    // Markera INTE som hanterad — låt Stripe försöka igen, det kan vara ett
+    // tillfälligt fel (t.ex. att e-postutskicket misslyckades).
+    return NextResponse.json({ error: "Internt fel vid hantering av händelsen." }, { status: 500 });
+  }
+
+  markEventProcessed(event.id);
   return NextResponse.json({ received: true });
 }
 

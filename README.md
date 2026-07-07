@@ -331,6 +331,88 @@ betalning kunde inte verifieras utan ett Stripe-konto — testa med en liten
 testorder så fort kontot finns (skapa ordern, återbetala den via
 adminknappen, kontrollera i Stripe Dashboard att pengarna går tillbaka).
 
+## Robusthet & säkerhet
+
+- **Webhook-idempotens**: [`lib/data/webhookEventStore.ts`](lib/data/webhookEventStore.ts)
+  loggar Stripes `event.id` för varje hanterad webhook-händelse
+  ([`app/api/webhooks/stripe/route.ts`](app/api/webhooks/stripe/route.ts)).
+  En upprepad händelse (Stripe garanterar inte exactly-once-leverans)
+  returneras `{ received: true, duplicate: true }` direkt utan att köra
+  logiken igen — inga dubbla bekräftelsemejl. Testat: samma signerade
+  event skickat två gånger gav `paymentStatus: "paid"` exakt en gång och
+  precis ett mejlförsök loggat.
+- **Lagerskydd mot race conditions**: `reserveStockForItems` i
+  [`lib/data/productStore.ts`](lib/data/productStore.ts) läser lagret,
+  kontrollerar samtliga rader och skriver tillbaka i EN synkron funktion
+  (bara synkrona `fs`-anrop, inget `await` mellan läsning och skrivning) —
+  Node kör JS entrådigt, så två "samtidiga" köp av samma sista enhet kan
+  aldrig interleava mitt i funktionen inom samma process. Körs innan
+  Stripe kontaktas ([`app/api/checkout/payment-intent/route.ts`](app/api/checkout/payment-intent/route.ts))
+  respektive innan mock-ordern slutförs
+  ([`app/api/checkout/confirm/route.ts`](app/api/checkout/confirm/route.ts));
+  misslyckas kontrollen avvisas köpet med ett tydligt fel (409) istället
+  för att lagret går under noll. Testat med två parallella requests mot
+  en produkt med exakt 1 i lager: den ena lyckades, den andra fick
+  "finns tyvärr inte i tillräckligt antal längre", och slutligt lagersaldo
+  blev exakt 0.
+- **Server-side validering**: [`lib/validation.ts`](lib/validation.ts)
+  validerar leveransuppgifter (e-postformat, obligatoriska fält,
+  längdgränser, svenskt postnummerformat) i
+  [`app/api/checkout/session/route.ts`](app/api/checkout/session/route.ts) —
+  klientens `required`/`pattern`-attribut är bara en UX-genväg och skyddar
+  inte mot direkta API-anrop. Samma route validerar även att en beställd
+  färgvariant faktiskt matchar produkten, inte en godtycklig fritextsträng.
+- **HTML-sanering**: [`lib/sanitize.ts`](lib/sanitize.ts) (`escapeHtml`)
+  används i [`lib/email.ts`](lib/email.ts) där kundnamn/produktdata
+  klistras in i rå HTML-mejlmallar (till skillnad från Reacts JSX, som
+  redan escapar automatiskt) — annars skulle t.ex. ett kundnamn med
+  `<img onerror=...>` injiceras rakt in i bekräftelsemejlet.
+- **Rate limiting** ([`lib/rateLimit.ts`](lib/rateLimit.ts), enkel
+  in-memory räknare per IP — delas inte mellan serverless-instanser,
+  nollställs vid cold start, men stoppar naivt missbruk):
+  - `POST /api/checkout/session`: 20 req/60 s per IP.
+  - `POST /api/newsletter`: 5 req/60 s per IP.
+  - `POST /api/admin/login`: spärras i 5 minuter efter 5 felaktiga
+    lösenordsförsök i rad från samma IP (även ett KORREKT lösenord
+    avvisas under spärren) — se `loginLockoutSecondsRemaining` i
+    [`lib/adminAuth.ts`](lib/adminAuth.ts).
+
+  Testat: 6:e nyhetsbrevsanmälan inom en minut gav 429; 6:e felaktiga
+  adminlösenordsförsöket gav "För många felaktiga försök. Försök igen om
+  300 sekunder." och blockerade även efterföljande korrekta lösenord.
+- **Felsidor**: [`app/error.tsx`](app/error.tsx) fångar oväntade fel
+  inom route-trädet (behåller header/footer/varumärke, till skillnad från
+  Next.js standardfelsida); [`app/global-error.tsx`](app/global-error.tsx)
+  är den yttersta reserven om själva root-layouten kraschar (måste
+  definiera egen `<html>/<body>` och kan därför inte förlita sig på
+  Tailwind — inline-stilar). [`components/CheckoutErrorBoundary.tsx`](components/CheckoutErrorBoundary.tsx)
+  omsluter specifikt `<CheckoutFlow />` ([`app/kassa/page.tsx`](app/kassa/page.tsx))
+  så ett fel i ett enskilt kassasteg inte kraschar hela sidan. Verifierat
+  server-side (mer tillförlitligt än klick i förhandsgranskningsläget,
+  som fick återkommande hydreringsproblem under en lång testsession): ett
+  medvetet testfel i en sidas server-komponent gav status 500, och
+  RSC-svaret visade att Next.js korrekt valde `app/error.tsx` som
+  boundary för det route-segmentet — samma digest-hash syntes både i
+  klientens svar och i serverloggen (fullständigt felmeddelande där,
+  redigerat till bara ett hash-ID mot klienten, vilket är Next.js
+  avsedda produktionsbeteende).
+- **Säkerhetsheaders** ([`next.config.mjs`](next.config.mjs) → `headers()`):
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, och en
+  `Content-Security-Policy` som bara tillåter det som faktiskt behövs
+  (egna domänen + `js.stripe.com`/`api.stripe.com` för Stripe Elements)
+  — inga inline scripts (`'unsafe-inline'` finns bara i `style-src`, för
+  de färgprickar som sätts via inline `style={{...}}`, inte i
+  `script-src`). `'unsafe-eval'` läggs bara till i dev-läge (Turbopacks
+  HMR kan behöva det), aldrig i produktion.
+- **Intern felloggning** ([`lib/data/errorLogStore.ts`](lib/data/errorLogStore.ts)):
+  fångade serverfel i webhooken och betalnings-/återbetalnings-API:erna
+  skrivs till `data/errors.json` (tidsstämpel, felmeddelande, kontext).
+  Ersätter INTE en riktig tjänst (Sentry m.fl., som väntar på ett nytt
+  konto) — ger bara viss insyn under tiden. Visas i en ny flik i admin
+  ("Felloggen", [`components/admin/ErrorLogPanel.tsx`](components/admin/ErrorLogPanel.tsx)
+  + `GET /api/admin/errors`).
+
 ## Bekräftelsemejl
 
 [`lib/email.ts`](lib/email.ts) skickar ett bekräftelsemejl via Resends

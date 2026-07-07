@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getProductBySlug } from "@/lib/data/productStore";
 import { SHIPPING_OPTIONS, calculateShippingCost } from "@/lib/checkout";
 import { getShippingSettings } from "@/lib/data/settingsStore";
 import { saveSession } from "@/lib/data/checkoutSessionStore";
 import { DEFAULT_ATTRIBUTION } from "@/lib/attribution";
+import { validateShippingDetails } from "@/lib/validation";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // ---------------------------------------------------------------------------
 // MOCK: skapa checkout-session.
@@ -18,9 +20,25 @@ import { DEFAULT_ATTRIBUTION } from "@/lib/attribution";
 //
 // Beloppet beräknas alltid på servern utifrån produktdata — aldrig
 // från klienten — så den delen är redan produktionsriktig.
+//
+// All indata valideras server-side (inte bara klientens required/pattern-
+// attribut, som alltid går att kringgå) — se lib/validation.ts.
 // ---------------------------------------------------------------------------
 
-export async function POST(request: Request) {
+const MAX_QUANTITY_PER_LINE = 99;
+// 20 sessionsskapanden per minut och IP — täcker gott och väl en kund som
+// går fram och tillbaka i kassan, men stoppar naiva skript.
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 60_000;
+
+export async function POST(request: NextRequest) {
+  if (!checkRateLimit(`checkout-session:${getClientIp(request)}`, RATE_LIMIT, RATE_WINDOW_MS)) {
+    return NextResponse.json(
+      { error: "För många förfrågningar. Försök igen om en stund." },
+      { status: 429 }
+    );
+  }
+
   const body = await request.json().catch(() => null);
 
   if (!body || !Array.isArray(body.lines) || body.lines.length === 0) {
@@ -28,6 +46,11 @@ export async function POST(request: Request) {
       { error: "Varukorgen är tom eller ogiltig." },
       { status: 400 }
     );
+  }
+
+  const shippingError = validateShippingDetails(body.shipping);
+  if (shippingError) {
+    return NextResponse.json({ error: shippingError }, { status: 400 });
   }
 
   let subtotal = 0;
@@ -41,9 +64,24 @@ export async function POST(request: Request) {
 
   for (const line of body.lines) {
     const product = getProductBySlug(line.slug);
-    if (!product || typeof line.quantity !== "number" || line.quantity < 1) {
+    if (
+      !product ||
+      typeof line.quantity !== "number" ||
+      line.quantity < 1 ||
+      line.quantity > MAX_QUANTITY_PER_LINE
+    ) {
       return NextResponse.json(
         { error: "En produkt i varukorgen kunde inte hittas." },
+        { status: 400 }
+      );
+    }
+    // Färgen måste matcha en faktisk variant av produkten — annars accepteras
+    // en godtycklig fritextsträng rakt in i ordern (visas senare i admin och
+    // i bekräftelsemejlet).
+    const colorway = product.colorways.find((c) => c.name === line.colorName);
+    if (!colorway) {
+      return NextResponse.json(
+        { error: `Ogiltig färgvariant för ${product.name}.` },
         { status: 400 }
       );
     }
@@ -51,7 +89,7 @@ export async function POST(request: Request) {
     resolvedItems.push({
       slug: product.slug,
       name: product.name,
-      colorName: line.colorName,
+      colorName: colorway.name,
       quantity: line.quantity,
       unitPrice: product.price,
     });
@@ -75,12 +113,22 @@ export async function POST(request: Request) {
   // Sparar underlaget för ordern så /api/checkout/confirm kan slutföra den
   // (skapa en order för adminvyn, skicka bekräftelsemejl) utan att behöva
   // räkna om priset ovan — motsvarar hur Stripe/Klarna redan håller reda på
-  // en sessions innehåll internt.
+  // en sessions innehåll internt. Trimmade strängar, inte råa fält, sparas
+  // — extra egenskaper i body.shipping som klienten skickat med följer inte
+  // med.
   saveSession({
     sessionId,
     createdAt: new Date().toISOString(),
     items: resolvedItems,
-    shipping: body.shipping,
+    shipping: {
+      firstName: body.shipping.firstName.trim(),
+      lastName: body.shipping.lastName.trim(),
+      email: body.shipping.email.trim(),
+      address: body.shipping.address.trim(),
+      postalCode: body.shipping.postalCode.trim(),
+      city: body.shipping.city.trim(),
+      shippingMethod: shippingOption.id,
+    },
     paymentMethod: body.paymentMethod,
     subtotal,
     shippingCost,
