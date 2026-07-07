@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, calculateVatAmount } from "@/lib/format";
 import type { Order, OrderStatus, PaymentStatus } from "@/lib/data/orderStore";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -159,6 +159,9 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
                   </td>
                   <td className="px-5 py-3.5 text-right font-medium text-kol">
                     {formatPrice(o.total)}
+                    <div className="mt-0.5 text-xs font-normal text-mull">
+                      varav moms 25%: {formatPrice(calculateVatAmount(o.total))}
+                    </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <span

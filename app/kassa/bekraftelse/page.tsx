@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart";
+import { formatPrice, calculateVatAmount } from "@/lib/format";
 
 interface StoredOrder {
   orderId: string;
@@ -195,18 +196,33 @@ export default function ConfirmationPage() {
                     </li>
                   ))}
                 </ul>
-                <div className="mt-3 flex justify-between border-t border-kol/10 pt-3 text-sm">
-                  <span className="text-mull">{stored.shippingLabel}</span>
-                  <span className="font-display text-base font-bold text-kol">
-                    Totalt {new Intl.NumberFormat("sv-SE", {
-                      style: "currency",
-                      currency: "SEK",
-                      maximumFractionDigits: 0,
-                    }).format(stored.total)}
-                  </span>
+                <div className="mt-3 space-y-1.5 border-t border-kol/10 pt-3 text-sm">
+                  <div className="flex justify-between text-mull">
+                    <span>{stored.shippingLabel}</span>
+                  </div>
+                  <div className="flex justify-between text-mull">
+                    <span>Varav moms (25%)</span>
+                    <span>{formatPrice(calculateVatAmount(stored.total))}</span>
+                  </div>
+                  <div className="flex justify-between pt-1.5">
+                    <span className="font-display text-base font-bold text-kol">
+                      Totalt inkl. moms
+                    </span>
+                    <span className="font-display text-base font-bold text-kol">
+                      {formatPrice(stored.total)}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
+
+            <p className="mt-6 text-xs text-mull">
+              Ångrat dig? Du har 14 dagars ångerrätt —{" "}
+              <Link href="/villkor/angerratt" className="text-tegel underline underline-offset-2">
+                läs mer och hämta ångerblanketten
+              </Link>
+              .
+            </p>
           </>
         )}
 

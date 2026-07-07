@@ -1,4 +1,5 @@
 import type { Order } from "@/lib/data/orderStore";
+import { calculateVatAmount } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Bekräftelsemejl via Resend (https://resend.com).
@@ -13,6 +14,11 @@ import type { Order } from "@/lib/data/orderStore";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
+// Länken i mejlet till ångerrättssidan behöver en absolut URL eftersom
+// mejlet läses utanför vår egen app. Sätt NEXT_PUBLIC_SITE_URL i
+// produktion — se .env.example.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://garnladan.se";
+
 function buildOrderEmailHtml(order: Order): string {
   const rows = order.items
     .map(
@@ -21,12 +27,25 @@ function buildOrderEmailHtml(order: Order): string {
     )
     .join("");
 
+  // Priserna inkluderar redan moms — momsbeloppet visas som en egen rad
+  // (inte bara som text) för att bekräftelsen ska duga som kvitto.
+  const vatAmount = calculateVatAmount(order.total);
+
   return `
     <div style="font-family:sans-serif;color:#241C14">
       <h1 style="font-size:20px">Tack ${order.customer.firstName}, din beställning är mottagen!</h1>
       <p>Ordernummer <strong>${order.id}</strong>. Vi packar din beställning inom 24 timmar.</p>
       <table style="border-collapse:collapse;margin-top:16px">${rows}</table>
-      <p style="margin-top:16px"><strong>Totalt: ${order.total} kr</strong></p>
+      <table style="border-collapse:collapse;margin-top:16px;width:100%;max-width:320px">
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Delsumma</td><td style="padding:2px 0;text-align:right">${order.subtotal} kr</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Frakt (${order.shippingLabel})</td><td style="padding:2px 0;text-align:right">${order.shippingCost} kr</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Varav moms (25%)</td><td style="padding:2px 0;text-align:right">${vatAmount} kr</td></tr>
+        <tr><td style="padding:8px 12px 0 0;font-weight:bold">Totalt (inkl. moms)</td><td style="padding:8px 0 0;text-align:right;font-weight:bold">${order.total} kr</td></tr>
+      </table>
+      <p style="margin-top:20px;font-size:13px">
+        Ångrat dig? Du har 14 dagars ångerrätt —
+        <a href="${SITE_URL}/villkor/angerratt" style="color:#A64B33">läs mer och hämta ångerblanketten</a>.
+      </p>
       <p style="margin-top:24px;color:#5E4C3A;font-size:13px">Detta är ett automatiskt mejl från Garnladan.</p>
     </div>
   `;

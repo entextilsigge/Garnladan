@@ -42,3 +42,17 @@
     overflow: hidden;
   }
 }
+
+/* Skriv ut ångerblanketten (app/villkor/angerratt) utan sajtens
+   header/footer/cookie-banner — bara själva blanketten ska hamna på pappret. */
+@media print {
+  header,
+  footer,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  [data-print-form] {
+    box-shadow: none !important;
+  }
+}

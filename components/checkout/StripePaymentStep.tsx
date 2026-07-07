@@ -41,11 +41,15 @@ export default function StripePaymentStep({
   shipping,
   shippingLabel,
   total,
+  termsAccepted,
+  onRequireTerms,
   onBack,
 }: {
   shipping: ShippingDetails;
   shippingLabel: string;
   total: number;
+  termsAccepted: boolean;
+  onRequireTerms: () => void;
   onBack: () => void;
 }) {
   const { lines } = useCart();
@@ -153,7 +157,13 @@ export default function StripePaymentStep({
         ],
       }}
     >
-      <PaymentForm orderId={orderId} total={total} onBack={onBack} />
+      <PaymentForm
+        orderId={orderId}
+        total={total}
+        termsAccepted={termsAccepted}
+        onRequireTerms={onRequireTerms}
+        onBack={onBack}
+      />
     </Elements>
   );
 }

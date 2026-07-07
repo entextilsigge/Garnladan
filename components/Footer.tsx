@@ -29,8 +29,8 @@ export default function Footer() {
           </p>
           <ul className="mt-4 space-y-2.5 text-sm">
             <li><Link href="/varukorg" className="transition-colors hover:text-krita">Varukorg</Link></li>
-            <li><span className="cursor-default">Frakt & leverans</span></li>
-            <li><span className="cursor-default">Byten & returer</span></li>
+            <li><Link href="/villkor" className="transition-colors hover:text-krita">Frakt & leverans</Link></li>
+            <li><Link href="/villkor/angerratt" className="transition-colors hover:text-krita">Byten & returer</Link></li>
             <li><span className="cursor-default">Stickhjälp — fråga oss!</span></li>
           </ul>
         </div>
@@ -45,8 +45,13 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-krita/10">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-5 text-xs text-krita/50 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-5 text-xs text-krita/50 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <p>© {new Date().getFullYear()} Garnladan AB. Alla rättigheter förbehållna.</p>
+          <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
+            <li><Link href="/villkor" className="transition-colors hover:text-krita">Allmänna villkor</Link></li>
+            <li><Link href="/villkor/angerratt" className="transition-colors hover:text-krita">Ångerrätt</Link></li>
+            <li><Link href="/integritetspolicy" className="transition-colors hover:text-krita">Integritetspolicy</Link></li>
+          </ul>
           <p>Org.nr 559123-4567 · Priser inkl. moms</p>
         </div>
       </div>

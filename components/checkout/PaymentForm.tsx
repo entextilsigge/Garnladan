@@ -8,10 +8,14 @@ import { formatPrice } from "@/lib/format";
 export default function PaymentForm({
   orderId,
   total,
+  termsAccepted,
+  onRequireTerms,
   onBack,
 }: {
   orderId: string;
   total: number;
+  termsAccepted: boolean;
+  onRequireTerms: () => void;
   onBack: () => void;
 }) {
   const stripe = useStripe();
@@ -23,6 +27,10 @@ export default function PaymentForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!stripe || !elements) return;
+    if (!termsAccepted) {
+      onRequireTerms();
+      return;
+    }
 
     setSubmitting(true);
     setError(null);

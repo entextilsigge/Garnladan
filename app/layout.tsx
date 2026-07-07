@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CartDrawer from "@/components/CartDrawer";
 import UtmCapture from "@/components/UtmCapture";
+import CookieConsentBanner from "@/components/CookieConsentBanner";
 import { CartProvider } from "@/lib/cart";
 import "./globals.css";
 
@@ -50,6 +51,7 @@ export default function RootLayout({
           <Footer />
           <CartDrawer />
         </CartProvider>
+        <CookieConsentBanner />
       </body>
     </html>
   );

@@ -37,6 +37,43 @@ const EMPTY_SHIPPING: ShippingDetails = {
 const inputClass =
   "w-full rounded-xl border border-kol/15 bg-white/80 px-4 py-3 text-sm text-kol placeholder:text-mull/50 focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25";
 
+// Obligatorisk innan en order kan slutföras — se checket i handlePayment
+// (mockat flöde) respektive termsAccepted-proppen till Stripe-flödet.
+function TermsCheckbox({
+  checked,
+  onChange,
+  error,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  error?: string | null;
+}) {
+  return (
+    <div className="rounded-2xl bg-linne/50 p-4">
+      <label className="flex cursor-pointer items-start gap-3 text-sm text-kol">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-tegel"
+        />
+        <span>
+          Jag har läst och godkänner{" "}
+          <Link href="/villkor" target="_blank" className="text-tegel underline underline-offset-2">
+            villkoren
+          </Link>{" "}
+          samt{" "}
+          <Link href="/integritetspolicy" target="_blank" className="text-tegel underline underline-offset-2">
+            integritetspolicyn
+          </Link>
+          .
+        </span>
+      </label>
+      {error && <p className="mt-2 text-xs font-medium text-tegel-dark">{error}</p>}
+    </div>
+  );
+}
+
 export default function CheckoutFlow() {
   const router = useRouter();
   const { lines, subtotal, clearCart } = useCart();
@@ -45,6 +82,8 @@ export default function CheckoutFlow() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("kort");
   const [isProcessing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
 
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.id === shipping.shippingMethod)!;
   const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : shippingOption.price;
@@ -87,6 +126,10 @@ export default function CheckoutFlow() {
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
+    if (!termsAccepted) {
+      setTermsError("Du måste godkänna villkoren för att slutföra köpet.");
+      return;
+    }
     setProcessing(true);
     setError(null);
     try {
@@ -302,11 +345,21 @@ export default function CheckoutFlow() {
 
         {/* ------------------------------------------------ Steg 2: Betalning */}
         {step === "betalning" && stripeEnabled && (
-          <div className="mt-8">
+          <div className="mt-8 space-y-6">
+            <TermsCheckbox
+              checked={termsAccepted}
+              onChange={(value) => {
+                setTermsAccepted(value);
+                if (value) setTermsError(null);
+              }}
+              error={termsError}
+            />
             <StripePaymentStep
               shipping={shipping}
               shippingLabel={shippingOption.label}
               total={total}
+              termsAccepted={termsAccepted}
+              onRequireTerms={() => setTermsError("Du måste godkänna villkoren för att slutföra köpet.")}
               onBack={() => setStep("leverans")}
             />
           </div>
@@ -394,6 +447,15 @@ export default function CheckoutFlow() {
                 </div>
               )}
             </div>
+
+            <TermsCheckbox
+              checked={termsAccepted}
+              onChange={(value) => {
+                setTermsAccepted(value);
+                if (value) setTermsError(null);
+              }}
+              error={termsError}
+            />
 
             {error && (
               <p className="rounded-2xl bg-tegel/10 px-5 py-4 text-sm font-medium text-tegel-dark">
