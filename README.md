@@ -109,10 +109,11 @@ httpOnly-cookie, giltig i 8 timmar.
 - **Lager**: en färgvariant med 0 i lager visas som "Slut i lager" på
   produktsidan och går inte att lägga i varukorgen (kollas både i UI och i
   varukorgslogiken).
-- **Beställningar**: lista över alla genomförda (mockade) köp med
-  ordernummer, datum, kund, rader och totalsumma. Status kan ändras
-  (Mottagen → Skickad → Levererad). Sök/filtrera på ordernummer, kund eller
-  status.
+- **Beställningar**: lista över alla genomförda köp med ordernummer, datum,
+  kund, rader, betalstatus, packstatus och spårningsnummer synligt direkt i
+  tabellen. Sök/filtrera på ordernummer, kund eller packstatus. Öppna en
+  order ("Detaljer") för full orderinfo och riktig återbetalning — se
+  "Återbetalningar" nedan.
 - **Statistik**: försäljning, lönsamhet, produktprestanda, kunder och
   marknadsföring — se eget avsnitt nedan.
 
@@ -262,6 +263,56 @@ Stripes egna felmeddelande ("Invalid API Key provided…") snyggt visat i
 kassan — vilket bekräftar att hela kedjan (session → PaymentIntent →
 Stripe-anrop → felhantering) fungerar; det enda som saknas är ett riktigt
 konto.
+
+Samma ogiltiga-nyckel-trick användes för att verifiera
+kassa-resiliensen (se "Återbetalningar" nedan för själva
+återbetalnings-verifieringen): ett misslyckat PaymentIntent-anrop lämnade
+sessionen (kundens adress, fraktval, varukorg) orörd i
+`data/checkoutSessions.json`, och "Försök igen"-knappen återanvände samma
+session (ingen ny skapades) istället för att tvinga kunden tillbaka till
+steg 1.
+
+## Återbetalningar
+
+Riktiga återbetalningar körs mot `stripe.refunds.create` — se
+[`app/api/admin/orders/[id]/refund/route.ts`](app/api/admin/orders/%5Bid%5D/refund/route.ts),
+knappen "Återbetala" i orderdetaljvyn i admin (klicka "Detaljer" på en
+order i Beställningar-fliken).
+
+- **Delåterbetalning** stöds — admin anger valfritt belopp upp till vad
+  som återstår av ordersumman.
+- **Ordning**: Stripe-anropet görs FÖRST. Lyckas det inte (redan
+  återbetalad, för sent, nätverksfel) ändras INGET lokalt — ordern behåller
+  sin gamla betalstatus och felet visas rakt av i admin.
+- **Lager**: en återbetalning som gör ordern helt återbetald lägger
+  automatiskt tillbaka lagret för alla rader. En delåterbetalning gör
+  INGET automatiskt — den kopplas inte till specifika rader (för
+  felkänsligt att gissa utifrån ett delbelopp), utan admin bekräftar
+  manuellt vilka rader som kommit i retur i samma vy
+  ([`app/api/admin/orders/[id]/restock/route.ts`](app/api/admin/orders/%5Bid%5D/restock/route.ts)).
+- **Mejl**: `sendRefundConfirmationEmail` (i [`lib/email.ts`](lib/email.ts))
+  skickas till kunden när återbetalningen lyckats, samma
+  no-op-utan-`RESEND_API_KEY`-beteende som övriga mejl.
+- **Betalmetod**: `order.paymentMethod` sätts inledningsvis generiskt till
+  `"stripe"` men uppdateras av webhooken (`payment_intent.succeeded`) till
+  den faktiska metoden (`"card"`, `"klarna"` osv.), hämtad via ett riktat
+  `paymentIntents.retrieve(..., { expand: ["latest_charge"] })`-anrop (den
+  äldre `charges`-listan finns inte kvar i den Stripe SDK-version projektet
+  använder). Ingen nedbrytning per metod i statistik-dashboarden ännu —
+  bara datainsamlingen är på plats.
+
+Verifierat i den här sessionen utan ett riktigt Stripe-konto: (1)
+`recordRefund`/lagerlogiken i `lib/data/orderStore.ts` och
+`lib/data/productStore.ts` genom att tillfälligt simulera en lyckad
+återbetalning direkt mot store-funktionerna (full återbetalning → korrekt
+`paymentStatus: "refunded"` + automatisk lagerpåfyllning; delåterbetalning
+→ `"partially_refunded"` + INGEN automatisk lagerpåfyllning + korrekt
+manuell rad-för-rad-återläggning via restock-routen), och (2) att ett
+faktiskt Stripe-fel (ogiltig nyckel) från `/refund`-routen korrekt lämnar
+lokal status orörd. Själva `stripe.refunds.create`-anropet mot en riktig
+betalning kunde inte verifieras utan ett Stripe-konto — testa med en liten
+testorder så fort kontot finns (skapa ordern, återbetala den via
+adminknappen, kontrollera i Stripe Dashboard att pengarna går tillbaka).
 
 ## Bekräftelsemejl
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStripeClient, isStripeConfigured } from "@/lib/stripe";
-import { consumeSession } from "@/lib/data/checkoutSessionStore";
+import { consumeSession, peekSession } from "@/lib/data/checkoutSessionStore";
 import { createOrderFromSession, generateOrderId } from "@/lib/orders";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +19,13 @@ import { createOrderFromSession, generateOrderId } from "@/lib/orders";
 // Momshantering: priserna i produktkatalogen är redan momsinkluderade (25 %
 // svensk moms, se README). automatic_tax läggs INTE på här — det skulle
 // dubbelräkna momsen ovanpå ett redan momsinkluderat pris.
+//
+// Sessionen läses med peekSession (INTE consumeSession) innan Stripe-
+// anropet, och konsumeras (tas bort) bara om anropet faktiskt lyckas. Om
+// stripe.paymentIntents.create misslyckas (t.ex. nätverksfel) finns
+// sessionen — och därmed kundens redan ifyllda leveransadress, fraktval och
+// varukorg — kvar, så klienten kan försöka igen med samma sessionId utan
+// att kunden behöver fylla i något på nytt (se StripePaymentStep.tsx).
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request) {
@@ -34,7 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "sessionId krävs." }, { status: 400 });
   }
 
-  const session = consumeSession(body.sessionId);
+  const session = peekSession(body.sessionId);
   if (!session) {
     return NextResponse.json(
       { error: "Sessionen hittades inte eller har redan använts." },
@@ -63,12 +70,14 @@ export async function POST(request: Request) {
         error:
           err instanceof Error
             ? err.message
-            : "Kunde inte skapa betalningen hos Stripe.",
+            : "Kunde inte skapa betalningen hos Stripe. Försök igen.",
       },
       { status: 502 }
     );
   }
 
+  // Konsumera sessionen först nu när Stripe-anropet faktiskt lyckats.
+  consumeSession(body.sessionId);
   createOrderFromSession(session, orderId, "pending", paymentIntent.id);
 
   return NextResponse.json({ clientSecret: paymentIntent.client_secret, orderId });

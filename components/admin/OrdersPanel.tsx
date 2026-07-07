@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import OrderDetailModal from "@/components/admin/OrderDetailModal";
 import { formatPrice, calculateVatAmount } from "@/lib/format";
 import type { Order, OrderStatus, PaymentStatus } from "@/lib/data/orderStore";
 
@@ -23,12 +24,16 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   pending: "Väntar betalning",
   paid: "Betald",
   failed: "Betalning misslyckades",
+  refunded: "Återbetald",
+  partially_refunded: "Delvis återbetald",
 };
 
 const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
   pending: "bg-senap/15 text-senap-dark",
   paid: "bg-gran/10 text-gran",
   failed: "bg-tegel/10 text-tegel",
+  refunded: "bg-kol/10 text-kol",
+  partially_refunded: "bg-senap/15 text-senap-dark",
 };
 
 export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] }) {
@@ -41,6 +46,7 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [trackingDrafts, setTrackingDrafts] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     let list = orders;
@@ -105,6 +111,7 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
   }
 
   const countFor = (status: OrderStatus) => orders.filter((o) => o.status === status).length;
+  const detailOrder = orders.find((o) => o.id === detailOrderId) ?? null;
 
   return (
     <div>
@@ -264,13 +271,21 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <Link
-                      href={`/admin/packlista/${o.id}`}
-                      target="_blank"
-                      className="whitespace-nowrap rounded-full border border-kol/15 px-3 py-1.5 text-xs font-medium text-kol transition-colors hover:bg-linne"
-                    >
-                      Packsedel
-                    </Link>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => setDetailOrderId(o.id)}
+                        className="whitespace-nowrap rounded-full border border-kol/15 px-3 py-1.5 text-xs font-medium text-kol transition-colors hover:bg-linne"
+                      >
+                        Detaljer
+                      </button>
+                      <Link
+                        href={`/admin/packlista/${o.id}`}
+                        target="_blank"
+                        className="whitespace-nowrap rounded-full border border-kol/15 px-3 py-1.5 text-xs font-medium text-kol transition-colors hover:bg-linne"
+                      >
+                        Packsedel
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );
@@ -285,6 +300,16 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
           </tbody>
         </table>
       </div>
+
+      {detailOrder && (
+        <OrderDetailModal
+          order={detailOrder}
+          onClose={() => setDetailOrderId(null)}
+          onUpdated={(updated) => {
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+          }}
+        />
+      )}
     </div>
   );
 }

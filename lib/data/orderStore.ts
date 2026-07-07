@@ -25,10 +25,19 @@ export type OrderStatus = "vantar_packning" | "packad" | "skickad";
  * status). Sätts till "paid" direkt av det mockade flödet (allt lyckas),
  * eller av app/api/webhooks/stripe/route.ts när en riktig
  * payment_intent.succeeded/payment_intent.payment_failed tas emot. Ändras
- * ALDRIG manuellt i admin — Stripe (eller mock-flödet) är alltid
- * sanningskällan.
+ * ALDRIG manuellt i admin (utom via en lyckad återbetalning, se
+ * recordRefund nedan) — Stripe (eller mock-flödet) är alltid sanningskällan.
  */
-export type PaymentStatus = "pending" | "paid" | "failed";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
+
+/** En enskild återbetalning mot ordern — flera delåterbetalningar kan förekomma. */
+export interface OrderRefund {
+  id: string;
+  /** Stripes refund-id (re_...), för spårbarhet mot Stripe Dashboard. */
+  stripeRefundId: string;
+  amount: number;
+  createdAt: string;
+}
 
 export interface OrderItem {
   slug: string;
@@ -72,12 +81,28 @@ export interface Order {
   customer: OrderCustomer;
   shippingMethod: string;
   shippingLabel: string;
+  /**
+   * Betalmetod. Sätts generiskt till "stripe" när PaymentIntenten skapas,
+   * men uppdateras till den faktiska metoden (t.ex. "card", "klarna") av
+   * webhooken när payment_intent.succeeded tas emot — se
+   * app/api/webhooks/stripe/route.ts.
+   */
   paymentMethod: string;
   items: OrderItem[];
   subtotal: number;
   shippingCost: number;
   total: number;
   attribution: OrderAttribution;
+  /** Logg över återbetalningar mot ordern (kan vara flera delåterbetalningar). */
+  refunds?: OrderRefund[];
+  /**
+   * Nycklar (`${slug}::${colorName}`) för orderrader vars lager admin redan
+   * bekräftat är återlagt, så en rad inte råkar krediteras dubbelt om flera
+   * delåterbetalningar berör samma order. Sätts automatiskt för alla rader
+   * vid en FULL återbetalning; sätts manuellt av admin, rad för rad, vid
+   * delåterbetalning (se restockOrderItems nedan och POST .../refund).
+   */
+  restockedItemKeys?: string[];
 }
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -143,6 +168,48 @@ export function updatePaymentStatus(id: string, paymentStatus: PaymentStatus): O
   const idx = all.findIndex((o) => o.id === id);
   if (idx === -1) return null;
   all[idx] = { ...all[idx], paymentStatus };
+  writeAll(all);
+  return all[idx];
+}
+
+/** Ersätter den generiska "stripe"-etiketten med den faktiska betalmetoden (t.ex. "card", "klarna"). */
+export function updatePaymentMethod(id: string, paymentMethod: string): Order | null {
+  const all = readAll();
+  const idx = all.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  all[idx] = { ...all[idx], paymentMethod };
+  writeAll(all);
+  return all[idx];
+}
+
+/**
+ * Loggar en lyckad Stripe-återbetalning på ordern och sätter betalstatus
+ * till "refunded" (full) eller "partially_refunded" (delbelopp) utifrån
+ * totalt återbetalt belopp hittills jämfört med ordersumman. Anropas ENDAST
+ * efter att stripe.refunds.create() faktiskt lyckats (se
+ * app/api/admin/orders/[id]/refund/route.ts) — aldrig i förväg.
+ */
+export function recordRefund(id: string, refund: OrderRefund): Order | null {
+  const all = readAll();
+  const idx = all.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  const current = all[idx];
+  const refunds = [...(current.refunds ?? []), refund];
+  const totalRefunded = refunds.reduce((sum, r) => sum + r.amount, 0);
+  const paymentStatus: PaymentStatus = totalRefunded >= current.total ? "refunded" : "partially_refunded";
+  all[idx] = { ...current, refunds, paymentStatus };
+  writeAll(all);
+  return all[idx];
+}
+
+/** Markerar orderrader (`${slug}::${colorName}`) som redan återlagda i lager, så de inte krediteras igen. */
+export function markItemsRestocked(id: string, itemKeys: string[]): Order | null {
+  const all = readAll();
+  const idx = all.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  const current = all[idx];
+  const restockedItemKeys = Array.from(new Set([...(current.restockedItemKeys ?? []), ...itemKeys]));
+  all[idx] = { ...current, restockedItemKeys };
   writeAll(all);
   return all[idx];
 }

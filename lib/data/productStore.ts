@@ -167,6 +167,25 @@ export function reorderProductImages(id: string, orderedIds: string[]): Product 
   return updated;
 }
 
+/**
+ * Justerar lagersaldot för en specifik färgvariant (identifierad på slug +
+ * färgnamn, eftersom OrderItem inte har en direkt colorway-referens) med
+ * `delta` — positivt vid återläggning efter en retur. Om slug/färg inte
+ * längre finns (produkten borttagen eller färgen omdöpt) görs ingenting.
+ */
+export function adjustColorwayStock(slug: string, colorName: string, delta: number): void {
+  const all = readAll();
+  const idx = all.findIndex((p) => p.slug === slug);
+  if (idx === -1) return;
+  const product = all[idx];
+  const colorIdx = product.colorways.findIndex((c) => c.name === colorName);
+  if (colorIdx === -1) return;
+  const colorways = [...product.colorways];
+  colorways[colorIdx] = { ...colorways[colorIdx], stock: colorways[colorIdx].stock + delta };
+  all[idx] = { ...product, colorways };
+  writeAll(all);
+}
+
 /** Tar bort en bildreferens ur produkten och returnerar den borttagna bilden (för Blob-radering) tillsammans med produkten. */
 export function removeProductImage(
   id: string,

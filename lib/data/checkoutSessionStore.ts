@@ -65,6 +65,18 @@ export function saveSession(session: PendingSession) {
   writeAll([...all, session]);
 }
 
+/**
+ * Läser sessionen UTAN att ta bort den — används av
+ * app/api/checkout/payment-intent/route.ts innan Stripe-anropet, så att
+ * sessionen (kundens redan ifyllda leveransadress, fraktval och varukorg)
+ * finns kvar för en retry om själva Stripe-anropet misslyckas (t.ex.
+ * nätverksfel). Sessionen konsumeras (tas bort) bara efter att
+ * PaymentIntenten faktiskt skapats.
+ */
+export function peekSession(sessionId: string): PendingSession | null {
+  return readAll().find((s) => s.sessionId === sessionId) ?? null;
+}
+
 /** Hämtar och tar samtidigt bort sessionen (kan bara konsumeras en gång). */
 export function consumeSession(sessionId: string): PendingSession | null {
   const all = readAll();

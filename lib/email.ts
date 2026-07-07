@@ -131,3 +131,33 @@ export async function sendShippingNotificationEmail(
     buildShippingEmailHtml(order, trackingNumber)
   );
 }
+
+function buildRefundEmailHtml(order: Order, amount: number): string {
+  const isFullRefund = order.paymentStatus === "refunded";
+  return `
+    <div style="font-family:sans-serif;color:#241C14">
+      <h1 style="font-size:20px">Din återbetalning är genomförd</h1>
+      <p>Hej ${order.customer.firstName}, vi har återbetalat ${amount} kr för beställning <strong>${order.id}</strong>.</p>
+      <p style="margin-top:12px">
+        ${isFullRefund
+          ? "Hela ordersumman är nu återbetald."
+          : "Detta är en delåterbetalning av ordern."}
+        Pengarna sätts in via samma betalmetod som användes vid köpet, vanligtvis inom några bankdagar.
+      </p>
+      <p style="margin-top:24px;color:#5E4C3A;font-size:13px">Detta är ett automatiskt mejl från Garnladan.</p>
+    </div>
+  `;
+}
+
+/**
+ * Skickas automatiskt när en riktig Stripe-återbetalning lyckats (se
+ * app/api/admin/orders/[id]/refund/route.ts) — ALDRIG i förväg, bara efter
+ * att stripe.refunds.create() faktiskt gått igenom.
+ */
+export async function sendRefundConfirmationEmail(order: Order, amount: number): Promise<void> {
+  await sendEmail(
+    order.customer.email,
+    `Din återbetalning för ${order.id} är genomförd`,
+    buildRefundEmailHtml(order, amount)
+  );
+}
