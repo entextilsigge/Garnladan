@@ -1,18 +1,13 @@
-import fs from "fs";
-import path from "path";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Kampanjregister — JSON-fil-baserad, server-only (använder "fs").
+// Kampanjregister — Supabase Postgres (uppdrag 13).
 //
 // Enkel manuell kampanjlogg (namn, kanal, period, ev. budget) som möjliggör
 // att jämföra försäljning under en kampanjperiod mot perioden innan i
 // adminstatistiken, utan att kräva en riktig annonsplattforms-integration.
 // Kopplingen till ordrar sker via `Order.attribution.campaign` (matchat mot
 // kampanjens namn) — se lib/analytics.ts.
-//
-// Samma Vercel-brasklapp som övriga JSON-lager i den här mappen: fungerar
-// utmärkt lokalt, men skrivningar försvinner mellan deploys/cold starts i
-// produktion. Byt ut readAll/writeAll mot en riktig databas för produktion.
 // ---------------------------------------------------------------------------
 
 export interface Campaign {
@@ -26,56 +21,76 @@ export interface Campaign {
   budget?: number;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const CAMPAIGNS_FILE = path.join(DATA_DIR, "campaigns.json");
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(CAMPAIGNS_FILE)) fs.writeFileSync(CAMPAIGNS_FILE, "[]");
+interface CampaignRow {
+  id: string;
+  name: string;
+  channel: string;
+  start_date: string;
+  end_date: string;
+  budget: number | null;
 }
 
-function readAll(): Campaign[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(CAMPAIGNS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function rowToCampaign(row: CampaignRow): Campaign {
+  return {
+    id: row.id,
+    name: row.name,
+    channel: row.channel,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    budget: row.budget != null ? Number(row.budget) : undefined,
+  };
 }
 
-function writeAll(campaigns: Campaign[]) {
-  ensureFile();
-  fs.writeFileSync(CAMPAIGNS_FILE, JSON.stringify(campaigns, null, 2));
-}
-
-export function getAllCampaigns(): Campaign[] {
-  return readAll().sort((a, b) => b.startDate.localeCompare(a.startDate));
+export async function getAllCampaigns(): Promise<Campaign[]> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("campaigns")
+    .select("*")
+    .order("start_date", { ascending: false });
+  throwIfSupabaseError(error);
+  return (data as unknown as CampaignRow[]).map(rowToCampaign);
 }
 
 export type CampaignInput = Omit<Campaign, "id">;
 
-export function createCampaign(input: CampaignInput): Campaign {
-  const all = readAll();
-  const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const campaign: Campaign = { ...input, id };
-  writeAll([...all, campaign]);
-  return campaign;
+export async function createCampaign(input: CampaignInput): Promise<Campaign> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("campaigns")
+    .insert({
+      name: input.name,
+      channel: input.channel,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      budget: input.budget ?? null,
+    })
+    .select()
+    .single();
+  throwIfSupabaseError(error);
+  return rowToCampaign(data as unknown as CampaignRow);
 }
 
-export function updateCampaign(id: string, patch: Partial<CampaignInput>): Campaign | null {
-  const all = readAll();
-  const idx = all.findIndex((c) => c.id === id);
-  if (idx === -1) return null;
-  all[idx] = { ...all[idx], ...patch, id };
-  writeAll(all);
-  return all[idx];
+export async function updateCampaign(id: string, patch: Partial<CampaignInput>): Promise<Campaign | null> {
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.channel !== undefined) row.channel = patch.channel;
+  if (patch.startDate !== undefined) row.start_date = patch.startDate;
+  if (patch.endDate !== undefined) row.end_date = patch.endDate;
+  if (patch.budget !== undefined) row.budget = patch.budget;
+
+  const { data, error } = await getSupabaseServiceClient()
+    .from("campaigns")
+    .update(row)
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToCampaign(data as unknown as CampaignRow) : null;
 }
 
-export function deleteCampaign(id: string): boolean {
-  const all = readAll();
-  const next = all.filter((c) => c.id !== id);
-  if (next.length === all.length) return false;
-  writeAll(next);
-  return true;
+export async function deleteCampaign(id: string): Promise<boolean> {
+  const { error, count } = await getSupabaseServiceClient()
+    .from("campaigns")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return (count ?? 0) > 0;
 }

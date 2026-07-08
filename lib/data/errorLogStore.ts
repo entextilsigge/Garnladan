@@ -1,14 +1,10 @@
-import fs from "fs";
-import path from "path";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Enkel intern felloggning — server-only (använder "fs"), samma
-// JSON-fils-mönster som övriga datalager. Ersätter INTE en riktig
-// felövervakningstjänst (Sentry m.fl.) — det kräver ett nytt konto som
-// medvetet väntar. Ger admin viss insyn i fångade serverfel (webhooks,
-// betalnings-API:er) under tiden, via "Felloggen" i /admin.
-//
-// Listan trimmas till de senaste MAX_ERRORS för att inte växa obegränsat.
+// Enkel intern felloggning — Supabase Postgres (uppdrag 13). Ersätter INTE
+// en riktig felövervakningstjänst (Sentry m.fl.) — det kräver ett nytt
+// konto som medvetet väntar. Ger admin viss insyn i fångade serverfel
+// (webhooks, betalnings-API:er) under tiden, via "Felloggen" i /admin.
 // ---------------------------------------------------------------------------
 
 export interface LoggedError {
@@ -18,28 +14,20 @@ export interface LoggedError {
   context?: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ERRORS_FILE = path.join(DATA_DIR, "errors.json");
-const MAX_ERRORS = 200;
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(ERRORS_FILE)) fs.writeFileSync(ERRORS_FILE, "[]");
+interface ErrorLogRow {
+  id: string;
+  created_at: string;
+  message: string;
+  context: string | null;
 }
 
-function readAll(): LoggedError[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(ERRORS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(errors: LoggedError[]) {
-  ensureFile();
-  fs.writeFileSync(ERRORS_FILE, JSON.stringify(errors, null, 2));
+function rowToLoggedError(row: ErrorLogRow): LoggedError {
+  return {
+    id: row.id,
+    timestamp: row.created_at,
+    message: row.message,
+    context: row.context ?? undefined,
+  };
 }
 
 /**
@@ -47,21 +35,23 @@ function writeAll(errors: LoggedError[]) {
  * skrivförsök ska inte krascha den kod som faktiskt försöker rapportera ett
  * annat fel.
  */
-export function logError(message: string, context?: string): void {
+export async function logError(message: string, context?: string): Promise<void> {
   try {
-    const all = readAll();
-    all.unshift({
-      id: `err_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date().toISOString(),
-      message,
-      context,
-    });
-    writeAll(all.slice(0, MAX_ERRORS));
+    const { error } = await getSupabaseServiceClient()
+      .from("error_logs")
+      .insert({ message, context: context ?? null });
+    if (error) throw new Error(error.message);
   } catch (err) {
     console.error("[errorLogStore] Kunde inte skriva till felloggen", err);
   }
 }
 
-export function getRecentErrors(limit = 50): LoggedError[] {
-  return readAll().slice(0, limit);
+export async function getRecentErrors(limit = 50): Promise<LoggedError[]> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("error_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  throwIfSupabaseError(error);
+  return (data as unknown as ErrorLogRow[]).map(rowToLoggedError);
 }

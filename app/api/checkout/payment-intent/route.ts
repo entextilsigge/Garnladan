@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     for (const item of session.items) {
       await adjustColorwayStock(item.slug, item.colorName, item.quantity);
     }
-    logError(
+    await logError(
       err instanceof Error ? err.message : "Okänt fel vid PaymentIntent-skapande",
       "checkout/payment-intent"
     );

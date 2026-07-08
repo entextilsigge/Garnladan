@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   try {
     paymentIntent = await getStripeClient().paymentIntents.retrieve(order.paymentIntentId);
   } catch (err) {
-    logError(
+    await logError(
       err instanceof Error ? err.message : "Okänt fel vid avstämning mot Stripe",
       `admin/orders/${params.id}/reconcile`
     );

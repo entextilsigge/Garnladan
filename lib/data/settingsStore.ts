@@ -1,43 +1,41 @@
-import fs from "fs";
-import path from "path";
 import type { ShippingSettings } from "@/lib/checkout";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/lib/checkout";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Inställningslager — JSON-fil-baserad, server-only (använder "fs").
-//
-// Samma brasklapp som lib/data/productStore.ts/orderStore.ts: fungerar
-// utmärkt lokalt, men skrivningar försvinner mellan deploys/cold starts på
-// Vercels serverless-funktioner (read-only filsystem i produktion). Byt ut
-// readSettings/writeSettings mot en riktig databas för produktion.
-//
-// Idag innehåller den bara fraktinställningar (flat rate-priser och
-// fri frakt-gräns) — se lib/checkout.ts för typen och hur priserna
+// Inställningslager — Supabase Postgres (uppdrag 13). Singleton-tabell
+// (alltid exakt en rad, id=1, se supabase/migrations/0001_initial_schema.sql)
+// — innehåller idag bara fraktinställningar (flat rate-priser och
+// fri frakt-gräns), se lib/checkout.ts för typen och hur priserna
 // tillämpas i kassan.
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(DEFAULT_SHIPPING_SETTINGS, null, 2));
-  }
+interface SettingsRow {
+  ombud_price: number;
+  hem_price: number;
+  free_shipping_enabled: boolean;
+  free_shipping_threshold: number;
 }
 
-export function getShippingSettings(): ShippingSettings {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
-    return { ...DEFAULT_SHIPPING_SETTINGS, ...parsed };
-  } catch {
-    return { ...DEFAULT_SHIPPING_SETTINGS };
-  }
+export async function getShippingSettings(): Promise<ShippingSettings> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  if (!data) return { ...DEFAULT_SHIPPING_SETTINGS };
+  const row = data as unknown as SettingsRow;
+  return {
+    ombudPrice: Number(row.ombud_price),
+    hemPrice: Number(row.hem_price),
+    freeShippingEnabled: row.free_shipping_enabled,
+    freeShippingThreshold: Number(row.free_shipping_threshold),
+  };
 }
 
-export function updateShippingSettings(patch: Partial<ShippingSettings>): ShippingSettings {
-  const current = getShippingSettings();
+export async function updateShippingSettings(patch: Partial<ShippingSettings>): Promise<ShippingSettings> {
+  const current = await getShippingSettings();
   const next: ShippingSettings = {
     ombudPrice: typeof patch.ombudPrice === "number" ? patch.ombudPrice : current.ombudPrice,
     hemPrice: typeof patch.hemPrice === "number" ? patch.hemPrice : current.hemPrice,
@@ -50,7 +48,16 @@ export function updateShippingSettings(patch: Partial<ShippingSettings>): Shippi
         ? patch.freeShippingThreshold
         : current.freeShippingThreshold,
   };
-  ensureFile();
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(next, null, 2));
+
+  const { error } = await getSupabaseServiceClient()
+    .from("settings")
+    .update({
+      ombud_price: next.ombudPrice,
+      hem_price: next.hemPrice,
+      free_shipping_enabled: next.freeShippingEnabled,
+      free_shipping_threshold: next.freeShippingThreshold,
+    })
+    .eq("id", 1);
+  throwIfSupabaseError(error);
   return next;
 }

@@ -1,53 +1,39 @@
-import fs from "fs";
-import path from "path";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Idempotens-logg för Stripe-webhooks — server-only (använder "fs"), samma
-// JSON-fils-mönster som övriga datalager.
+// Idempotens-logg för Stripe-webhooks — Supabase Postgres (uppdrag 13).
 //
-// Stripe kan skicka samma händelse (samma event.id) flera gånger, t.ex. vid
-// timeout eller nätverksstrul innan vårt svar hinner fram. Utan den här
-// spärren skulle en upprepad payment_intent.succeeded-händelse kunna skicka
-// dubbla bekräftelsemejl eller (om vi någon gång kopplar effekter direkt
-// till händelsen) köra affärslogik två gånger. Se
-// app/api/webhooks/stripe/route.ts.
-//
-// Listan trimmas till de senaste MAX_EVENTS för att inte växa obegränsat —
-// Stripe garanterar inte leverans i evighet, så det räcker gott och väl för
-// att fånga rimliga retry-fönster.
+// En UNIK databaskonstraint på event_id (se supabase/migrations/
+// 0001_initial_schema.sql) ersätter den tidigare fil-baserade läs-sen-
+// skriv-kollen. mark_webhook_event_processed gör en atomär
+// `INSERT ... ON CONFLICT DO NOTHING` och returnerar om raden faktiskt VAR
+// ny — race-safe även över flera samtidiga serverless-instanser, till
+// skillnad från den gamla JSON-filen.
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const EVENTS_FILE = path.join(DATA_DIR, "webhookEvents.json");
-const MAX_EVENTS = 2000;
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(EVENTS_FILE)) fs.writeFileSync(EVENTS_FILE, "[]");
+/**
+ * Kollar OCH markerar eventet som hanterat i samma atomära databasoperation
+ * — ersätter det tidigare två-stegs hasProcessedEvent + markEventProcessed
+ * (som teoretiskt kunde racea mellan läsning och skrivning, om än under ett
+ * mycket kort fönster). Returnerar `true` om eventet var NYTT (ska
+ * processas), `false` om det redan setts (== en verklig dubblett, avbryt
+ * direkt).
+ *
+ * Anropas FÖRE själva hanteringslogiken (se app/api/webhooks/stripe/
+ * route.ts) — om hanteringen sedan kastar ett fel, anropas
+ * unmarkEventProcessed så att Stripes egen retry-mekanism kan försöka
+ * igen, precis som innan.
+ */
+export async function markEventProcessedIfNew(eventId: string): Promise<boolean> {
+  const { data, error } = await getSupabaseServiceClient().rpc("mark_webhook_event_processed", {
+    p_event_id: eventId,
+  });
+  throwIfSupabaseError(error);
+  return Boolean(data);
 }
 
-function readAll(): string[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(EVENTS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeAll(ids: string[]) {
-  ensureFile();
-  fs.writeFileSync(EVENTS_FILE, JSON.stringify(ids, null, 2));
-}
-
-export function hasProcessedEvent(eventId: string): boolean {
-  return readAll().includes(eventId);
-}
-
-export function markEventProcessed(eventId: string): void {
-  const all = readAll();
-  if (all.includes(eventId)) return;
-  all.push(eventId);
-  writeAll(all.slice(-MAX_EVENTS));
+/** Rullar tillbaka markeringen om hanteringen misslyckades efteråt — se ovan. */
+export async function unmarkEventProcessed(eventId: string): Promise<void> {
+  const { error } = await getSupabaseServiceClient().from("webhook_events").delete().eq("event_id", eventId);
+  throwIfSupabaseError(error);
 }

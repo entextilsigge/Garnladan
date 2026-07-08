@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripeClient, isStripeConfigured } from "@/lib/stripe";
 import { getOrderById } from "@/lib/data/orderStore";
-import { hasProcessedEvent, markEventProcessed } from "@/lib/data/webhookEventStore";
+import { markEventProcessedIfNew, unmarkEventProcessed } from "@/lib/data/webhookEventStore";
 import { logError } from "@/lib/data/errorLogStore";
 import { applyPaymentIntentOutcome } from "@/lib/orders";
 
@@ -59,16 +59,23 @@ export async function POST(request: Request) {
     );
   } catch (err) {
     console.error("[stripe-webhook] Ogiltig signatur", err);
-    logError(
+    await logError(
       err instanceof Error ? err.message : "Ogiltig webhook-signatur",
       "webhooks/stripe:signature"
     );
     return NextResponse.json({ error: "Ogiltig signatur." }, { status: 400 });
   }
 
-  // Redan hanterad — svara 200 direkt utan att köra logiken igen (annars
-  // riskeras dubbla bekräftelsemejl eller dubbla effekter).
-  if (hasProcessedEvent(event.id)) {
+  // Atomär check-och-markera (unik databaskonstraint på event_id, se
+  // supabase/migrations/0001_initial_schema.sql) — om eventet redan setts
+  // svarar vi 200 direkt utan att köra logiken igen (annars riskeras dubbla
+  // bekräftelsemejl eller dubbla effekter). Markeringen sker FÖRE
+  // hanteringen (inte efter, som i den tidigare fil-baserade versionen) för
+  // att stänga racet helt — men rullas tillbaka i catch-blocket nedan om
+  // hanteringen misslyckas, så Stripes egen retry fortfarande fungerar för
+  // ett verkligt fel.
+  const isNewEvent = await markEventProcessedIfNew(event.id);
+  if (!isNewEvent) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
@@ -87,15 +94,15 @@ export async function POST(request: Request) {
       }
     }
   } catch (err) {
-    logError(
+    await logError(
       err instanceof Error ? err.message : "Okänt fel vid hantering av Stripe-webhook",
       `webhooks/stripe:${event.type}`
     );
-    // Markera INTE som hanterad — låt Stripe försöka igen, det kan vara ett
+    // Rulla tillbaka markeringen — låt Stripe försöka igen, det kan vara ett
     // tillfälligt fel (t.ex. att e-postutskicket misslyckades).
+    await unmarkEventProcessed(event.id);
     return NextResponse.json({ error: "Internt fel vid hantering av händelsen." }, { status: 500 });
   }
 
-  markEventProcessed(event.id);
   return NextResponse.json({ received: true });
 }

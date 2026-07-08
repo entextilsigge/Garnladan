@@ -11,7 +11,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Ogiltig kampanjdata." }, { status: 400 });
   }
-  const updated = updateCampaign(params.id, body);
+  const updated = await updateCampaign(params.id, body);
   if (!updated) {
     return NextResponse.json({ error: "Kampanjen hittades inte." }, { status: 404 });
   }
@@ -23,7 +23,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  const ok = deleteCampaign(params.id);
+  const ok = await deleteCampaign(params.id);
   if (!ok) {
     return NextResponse.json({ error: "Kampanjen hittades inte." }, { status: 404 });
   }

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  return NextResponse.json({ campaigns: getAllCampaigns() });
+  return NextResponse.json({ campaigns: await getAllCampaigns() });
 }
 
 export async function POST(request: NextRequest) {
@@ -32,6 +32,6 @@ export async function POST(request: NextRequest) {
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
-  const campaign = createCampaign(body as CampaignInput);
+  const campaign = await createCampaign(body as CampaignInput);
   return NextResponse.json({ campaign }, { status: 201 });
 }

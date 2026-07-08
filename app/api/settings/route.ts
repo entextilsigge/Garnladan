@@ -5,5 +5,5 @@ import { getShippingSettings } from "@/lib/data/settingsStore";
 // läsa fraktinställningarna (flatrate-priser, fri frakt-gräns) för att visa
 // rätt belopp innan betalning. Inga känsliga uppgifter i svaret.
 export async function GET() {
-  return NextResponse.json(getShippingSettings());
+  return NextResponse.json(await getShippingSettings());
 }

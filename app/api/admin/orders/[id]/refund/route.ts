@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // Steg 3b: Stripe misslyckades — släpp reservationen så beloppet blir
     // tillgängligt igen.
     await cancelRefundReservation(refundId);
-    logError(
+    await logError(
       err instanceof Error ? err.message : "Okänt fel vid återbetalning",
       `admin/orders/${params.id}/refund`
     );
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   // Steg 3a: Stripe lyckades — bokför permanent.
   const finalized = await finalizeRefund(refundId, stripeRefundId);
   if (!finalized.ok) {
-    logError(finalized.error, `admin/orders/${params.id}/refund:finalize`);
+    await logError(finalized.error, `admin/orders/${params.id}/refund:finalize`);
     return NextResponse.json({ error: finalized.error }, { status: 500 });
   }
 

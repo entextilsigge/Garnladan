@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  return NextResponse.json(getShippingSettings());
+  return NextResponse.json(await getShippingSettings());
 }
 
 export async function PATCH(request: NextRequest) {
@@ -39,6 +39,6 @@ export async function PATCH(request: NextRequest) {
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
-  const updated = updateShippingSettings(body as Record<string, unknown>);
+  const updated = await updateShippingSettings(body as Record<string, unknown>);
   return NextResponse.json(updated);
 }
