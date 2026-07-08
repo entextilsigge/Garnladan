@@ -66,6 +66,13 @@ export function validateProductInput(body: unknown): string | null {
   if (typeof input.price !== "number" || !Number.isFinite(input.price) || input.price <= 0) {
     return "Ogiltigt pris.";
   }
+  if (
+    typeof input.costPrice !== "number" ||
+    !Number.isFinite(input.costPrice) ||
+    input.costPrice < 0
+  ) {
+    return "Ogiltigt inköpspris.";
+  }
   if (input.tagline !== undefined && input.tagline !== "" && !isNonEmptyString(input.tagline, MAX_TAGLINE_LENGTH)) {
     return `Ingressen är för lång (max ${MAX_TAGLINE_LENGTH} tecken).`;
   }

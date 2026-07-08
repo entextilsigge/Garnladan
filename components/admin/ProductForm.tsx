@@ -19,6 +19,7 @@ interface FormState {
   name: string;
   category: Category;
   price: number;
+  costPrice: number;
   tagline: string;
   description: string;
   composition: string;
@@ -50,6 +51,7 @@ function emptyForm(): FormState {
     name: "",
     category: "ull",
     price: 89,
+    costPrice: 0,
     tagline: "",
     description: "",
     composition: "",
@@ -72,6 +74,7 @@ function toForm(product: Product): FormState {
     name: product.name,
     category: product.category,
     price: product.price,
+    costPrice: product.costPrice,
     tagline: product.tagline,
     description: product.description,
     composition: product.composition,
@@ -228,6 +231,24 @@ export default function ProductForm({
                 className={inputClass}
                 required
               />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-kol">
+                Inköpspris (SEK)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.costPrice}
+                onChange={(e) => update("costPrice", Number(e.target.value))}
+                className={inputClass}
+                required
+              />
+              <p className="mt-1 text-xs text-mull">
+                Vad garnet kostar er per styck — grunden för
+                marginalberäkningarna i Statistik. Syns aldrig för kunden.
+              </p>
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-sm font-medium text-kol">Kort tagline</label>
