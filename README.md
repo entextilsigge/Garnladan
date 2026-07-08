@@ -7,7 +7,7 @@ Byggd med **Next.js (App Router), TypeScript och Tailwind CSS**. Helt på svensk
 
 ```bash
 npm install
-cp .env.example .env.local   # sätt ADMIN_PASSWORD (valfritt: RESEND_API_KEY, BLOB_READ_WRITE_TOKEN)
+cp .env.example .env.local   # sätt NEXT_PUBLIC_SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY (obligatoriskt, se "Datalagring / Supabase" nedan) + ADMIN_PASSWORD
 npm run dev                  # http://localhost:3000
 ```
 
@@ -44,25 +44,67 @@ innan sajten är på riktigt igång.
 - **Open Graph/Twitter-kort**: [`app/opengraph-image.tsx`](app/opengraph-image.tsx) genererar en generell varumärkesbild (via `next/og`) som används av alla sidor som inte har en egen. Produktsidor har sin egen [`app/produkt/[slug]/opengraph-image.tsx`](app/produkt/%5Bslug%5D/opengraph-image.tsx): visar produktens uppladdade foto om ett finns, annars ett enkelt kort i produktens egen kulör (samma idé som SVG-fallbacken på sajten, fast som ett statiskt OG-kort). `metadataBase` sätts i [`app/layout.tsx`](app/layout.tsx) från [`lib/seo.ts`](lib/seo.ts) (samma `NEXT_PUBLIC_SITE_URL` som mejlens länkar använder) så relativa OG-bild-URL:er löses upp mot rätt domän.
 - **Favicon**: [`app/icon.svg`](app/icon.svg) — en egen, varumärkesanpassad platshållare (stiliserad garnhärva i tegel-rött), inte Next.js standardikon.
 
-## Datalagring
+## Datalagring / Supabase
 
-Det finns ingen databas ännu — sortiment, ordrar och nyhetsbrevsprenumeranter
-lagras som JSON-filer under [`data/`](data), lästa/skrivna via:
+Allt strukturerat data (produkter, ordrar, checkout-sessioner, kampanjer,
+nyhetsbrev, inställningar, webhook-idempotens, fellogg) lagras i **Supabase
+Postgres** — se [`supabase/migrations/`](supabase/migrations) för det
+fullständiga schemat och [`lib/data/`](lib/data) för applikationskoden som
+pratar med det.
 
-- [`lib/data/productStore.ts`](lib/data/productStore.ts) — produkter (`data/products.json`)
-- [`lib/data/orderStore.ts`](lib/data/orderStore.ts) — beställningar (`data/orders.json`)
-- [`lib/data/newsletterStore.ts`](lib/data/newsletterStore.ts) — nyhetsbrev (`data/newsletter.json`)
-- [`lib/data/checkoutSessionStore.ts`](lib/data/checkoutSessionStore.ts) — kortlivad koppling mellan checkout-session och order
+**Varför Supabase och inte JSON-filer:** ett tidigare, enklare upplägg
+lagrade allt i JSON-filer under `data/`. Det fungerade lokalt men kraschade
+med `EROFS` på varje enda skrivning i produktion — Vercels
+serverless-funktioner har ett skrivskyddat filsystem. Supabase har inget
+sådant problem och ger dessutom riktiga atomära databasoperationer (se
+"Robusthet & säkerhet" nedan) istället för fil-baserade approximationer.
 
-Varje fil har en kommentar om var en riktig databas (Postgres/Supabase/
-PlanetScale etc.) ska kopplas in — resten av koden (admin-API:t, checkout)
-pratar bara med funktionerna i dessa moduler och behöver inte ändras.
+### Uppsättning
 
-**Viktigt för Vercel:** filsystemet i serverless-funktioner är read-only
-(utom `/tmp`, som inte delas mellan anrop). Skrivningar fungerar utmärkt
-lokalt (`npm run dev` / `npm start`) men **försvinner vid nästa deploy eller
-cold start i produktion**. För en riktig driftsättning, byt ut dessa fyra
-filer mot en riktig databas — inget annat i kodbasen behöver röras.
+1. Skapa ett nytt projekt på [supabase.com](https://supabase.com) (ett
+   **separat** projekt, inte samma som andra appar du driver).
+2. Öppna projektet → **SQL Editor** → **New query**. Kör
+   [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql)
+   i sin helhet (klistra in, klicka Run). Kör därefter
+   [`supabase/migrations/0002_variant_position.sql`](supabase/migrations/0002_variant_position.sql)
+   på samma sätt. Filerna körs i nummerordning, en gång var, mot ett nytt
+   tomt projekt.
+3. Gå till **Project Settings → API** och hämta tre värden:
+   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
+   - **anon / public**-nyckeln → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **service_role**-nyckeln (klicka "Reveal") → `SUPABASE_SERVICE_ROLE_KEY`
+4. Sätt alla tre i `.env.local` (lokalt) och under Project Settings →
+   Environment Variables i Vercel (produktion) — se
+   [`.env.example`](.env.example).
+
+**Viktigt om `SUPABASE_SERVICE_ROLE_KEY`:** den nyckeln kringgår Row Level
+Security helt och ger full läs-/skrivåtkomst till alla tabeller. Den får
+**ALDRIG** hamna i ett `NEXT_PUBLIC_`-prefixat fält eller i klientkod — bara
+i server-side kod (route handlers, se [`lib/supabase.ts`](lib/supabase.ts)).
+Publika sidor (produktlistning, produktsida) läser istället via
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, som en Row Level Security-policy begränsar
+till enbart `SELECT` på `products`/`product_variants` — se policyerna
+längst ner i
+[`0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql).
+
+### Schema, kortfattat
+
+| Tabell | Motsvarar |
+|---|---|
+| `products` + `product_variants` | Produkter + färgvarianter (egen tabell, foreign key, `stock` per variant) |
+| `orders` + `order_items` + `order_refunds` | Beställningar, orderrader, återbetalningar |
+| `checkout_sessions` | Kortlivad koppling mellan en påbörjad checkout och den slutgiltiga ordern |
+| `campaigns` | Manuellt kampanjregister för adminstatistiken |
+| `newsletter_subscribers` | Nyhetsbrevsprenumeranter |
+| `settings` | Singleton-rad (alltid `id=1`) med fraktinställningar |
+| `webhook_events` | Stripe-idempotens — unik constraint på `event_id` |
+| `error_logs` | Intern felloggning ("Felloggen" i admin) |
+
+Tre atomära Postgres-funktioner (`reserve_stock`, `reserve_refund` +
+`finalize_refund` + `cancel_refund_reservation`,
+`mark_webhook_event_processed`) hanterar de tillfällen där en enkel
+läs-och-skriv inte räcker för att skydda mot race conditions — se
+"Robusthet & säkerhet" nedan för detaljerna kring var och en.
 
 Produktbilderna genereras som SVG-illustrationer av
 [`components/YarnImage.tsx`](components/YarnImage.tsx) utifrån varje
@@ -176,9 +218,10 @@ UTM-parametrar defaultar det till `direkt`/`okänt`/`okänd`.
 
 **Inköpspris / marginal**: `Product.costPrice` i
 [`lib/products.ts`](lib/products.ts) är grunden för alla
-marginalberäkningar. Värdena i `data/products.json` är **platshållare**
-(35–60 % varierad bruttomarginal, se kommentar i koden) — inte riktiga
-inköpspriser. Byt ut dem så snart verkliga siffror finns; ingen annan kod
+marginalberäkningar. Värdena i `products`-tabellen i Supabase är
+**platshållare** (35–60 % varierad bruttomarginal, se kommentar i koden)
+— inte riktiga inköpspriser. Byt ut dem så snart verkliga siffror finns
+(via admin, produktredigering); ingen annan kod
 behöver ändras.
 
 **Seeda testdata (endast lokalt):**
@@ -187,13 +230,22 @@ behöver ändras.
 npm run seed:analytics
 ```
 
-Fyller `data/orders.json` och `data/campaigns.json` med ~140 realistiska
-testordrar spridda över de senaste ~5 månaderna (varierande kampanjkällor,
-kunder, produkter) plus tre exempelkampanjer, så statistiken går att
-utvärdera innan riktiga ordrar finns. Vägrar köra om `NODE_ENV=production`
-eller på Vercel. Idempotent — kör om när du vill, tidigare seed-data
-(identifierad via `SEED-`-prefix på ordernumret) rensas och ersätts. **Kör
-aldrig detta mot en databas med riktiga kundordrar** utan att först säkerhetskopiera `data/orders.json`.
+Fyller ~140 realistiska testordrar spridda över de senaste ~5 månaderna
+(varierande kampanjkällor, kunder, produkter) plus tre exempelkampanjer,
+så statistiken går att utvärdera innan riktiga ordrar finns. Vägrar köra
+om `NODE_ENV=production` eller på Vercel. Idempotent — kör om när du
+vill, tidigare seed-data (identifierad via `SEED-`-prefix på ordernumret)
+rensas och ersätts. **Kör aldrig detta mot en databas med riktiga
+kundordrar** utan att först ta en backup (se knappen "Ladda ner backup" i
+admin).
+
+> **OBS (känt att göra):** `scripts/seed-analytics.js` skriver fortfarande
+> direkt mot lokala `data/orders.json`/`data/campaigns.json`-filer och har
+> inte migrerats till Supabase i Uppdrag 13 — det var inte en del av
+> uppdragets scope (produktions-datalagret, inte dev-seedverktyg). Just nu
+> gör kommandot alltså ingenting mätbart, eftersom appen inte längre läser
+> från dessa filer. Behöver skrivas om mot Supabase-klienten innan det
+> är användbart igen.
 
 ## Stripe / betalning
 
@@ -284,10 +336,10 @@ konto.
 Samma ogiltiga-nyckel-trick användes för att verifiera
 kassa-resiliensen (se "Återbetalningar" nedan för själva
 återbetalnings-verifieringen): ett misslyckat PaymentIntent-anrop lämnade
-sessionen (kundens adress, fraktval, varukorg) orörd i
-`data/checkoutSessions.json`, och "Försök igen"-knappen återanvände samma
-session (ingen ny skapades) istället för att tvinga kunden tillbaka till
-steg 1.
+sessionen (kundens adress, fraktval, varukorg) orörd i tabellen
+`checkout_sessions` i Supabase, och "Försök igen"-knappen återanvände
+samma session (ingen ny skapades) istället för att tvinga kunden tillbaka
+till steg 1.
 
 ## Återbetalningar
 
@@ -301,6 +353,24 @@ order i Beställningar-fliken).
 - **Ordning**: Stripe-anropet görs FÖRST. Lyckas det inte (redan
   återbetalad, för sent, nätverksfel) ändras INGET lokalt — ordern behåller
   sin gamla betalstatus och felet visas rakt av i admin.
+- **Skydd mot dubbel återbetalning (race condition)**: två samtidiga
+  återbetalningsförsök mot samma order kan inte tillsammans gå över vad
+  som återstår av ordersumman. Eftersom Stripe-anropet är en långsam
+  extern nätverksrequest kan det inte göras inuti en databastransaktion —
+  därför sker skyddet i två atomiska steg via
+  [`lib/data/orderStore.ts`](lib/data/orderStore.ts):
+  `reserve_refund` (en Postgres-funktion i
+  [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql))
+  reserverar beloppet atomärt (misslyckas om det skulle överskrida
+  återstående belopp, oavsett hur många samtidiga anrop som racear), sedan
+  görs det riktiga `stripe.refunds.create`-anropet, och till sist
+  `finalize_refund` (lyckad Stripe-återbetalning) eller
+  `cancel_refund_reservation` (misslyckad — rullar tillbaka reservationen
+  så beloppet blir tillgängligt igen). Testat med två samtidiga
+  återbetalningsanrop mot en order där bara ett av dem rymdes inom
+  ordersumman: exakt ett lyckades, det andra avvisades med tydligt fel,
+  och den sammanlagda återbetalningen blev korrekt — aldrig mer än
+  ordersumman.
 - **Lager**: en återbetalning som gör ordern helt återbetald lägger
   automatiskt tillbaka lagret för alla rader. En delåterbetalning gör
   INGET automatiskt — den kopplas inte till specifika rader (för
@@ -318,43 +388,71 @@ order i Beställningar-fliken).
   använder). Ingen nedbrytning per metod i statistik-dashboarden ännu —
   bara datainsamlingen är på plats.
 
-Verifierat i den här sessionen utan ett riktigt Stripe-konto: (1)
-`recordRefund`/lagerlogiken i `lib/data/orderStore.ts` och
-`lib/data/productStore.ts` genom att tillfälligt simulera en lyckad
-återbetalning direkt mot store-funktionerna (full återbetalning → korrekt
+Verifierat mot den riktiga Supabase-databasen (utan ett riktigt
+Stripe-konto): (1) `recordRefund`/lagerlogiken i
+`lib/data/orderStore.ts` och `lib/data/productStore.ts` genom att
+tillfälligt simulera en lyckad återbetalning direkt mot
+store-funktionerna (full återbetalning → korrekt
 `paymentStatus: "refunded"` + automatisk lagerpåfyllning; delåterbetalning
 → `"partially_refunded"` + INGEN automatisk lagerpåfyllning + korrekt
-manuell rad-för-rad-återläggning via restock-routen), och (2) att ett
+manuell rad-för-rad-återläggning via restock-routen), (2) att ett
 faktiskt Stripe-fel (ogiltig nyckel) från `/refund`-routen korrekt lämnar
-lokal status orörd. Själva `stripe.refunds.create`-anropet mot en riktig
-betalning kunde inte verifieras utan ett Stripe-konto — testa med en liten
-testorder så fort kontot finns (skapa ordern, återbetala den via
-adminknappen, kontrollera i Stripe Dashboard att pengarna går tillbaka).
+lokal status orörd OCH rullar tillbaka refund-reservationen (se ovan), och
+(3) det atomiska dubbel-återbetalningsskyddet med genuint samtidiga
+requests mot den skarpa databasen. Själva `stripe.refunds.create`-anropet
+mot en riktig betalning kunde inte verifieras utan ett Stripe-konto —
+testa med en liten testorder så fort kontot finns (skapa ordern,
+återbetala den via adminknappen, kontrollera i Stripe Dashboard att
+pengarna går tillbaka).
 
 ## Robusthet & säkerhet
 
 - **Webhook-idempotens**: [`lib/data/webhookEventStore.ts`](lib/data/webhookEventStore.ts)
-  loggar Stripes `event.id` för varje hanterad webhook-händelse
-  ([`app/api/webhooks/stripe/route.ts`](app/api/webhooks/stripe/route.ts)).
-  En upprepad händelse (Stripe garanterar inte exactly-once-leverans)
-  returneras `{ received: true, duplicate: true }` direkt utan att köra
-  logiken igen — inga dubbla bekräftelsemejl. Testat: samma signerade
-  event skickat två gånger gav `paymentStatus: "paid"` exakt en gång och
-  precis ett mejlförsök loggat.
+  anropar `mark_webhook_event_processed` — en Postgres-funktion (se
+  [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql))
+  som gör en `insert ... on conflict do nothing` mot en unik databas-constraint
+  på Stripes `event.id`, och returnerar om raden faktiskt sattes in (dvs.
+  händelsen är ny). [`app/api/webhooks/stripe/route.ts`](app/api/webhooks/stripe/route.ts)
+  markerar händelsen FÖRST, kör sedan logiken, och river upp markeringen
+  igen om logiken kastar fel — så en händelse som faktiskt misslyckades
+  kan processas om vid nästa Stripe-retry, men en händelse som redan
+  lyckats kan aldrig processas två gånger. En upprepad händelse (Stripe
+  garanterar inte exactly-once-leverans) returneras
+  `{ received: true, duplicate: true }` direkt utan att köra logiken igen
+  — inga dubbla bekräftelsemejl. Den unika databas-constrainten gör
+  skyddet robust även mot två helt samtidiga leveranser av samma
+  händelse, vilket ett filbaserat kontroll-innan-skrivning-schema inte
+  klarar. Testat mot den skarpa databasen: samma signerade event skickat
+  två gånger (även helt samtidigt) gav `paymentStatus: "paid"` exakt en
+  gång och precis ett mejlförsök loggat.
 - **Lagerskydd mot race conditions**: `reserveStockForItems` i
-  [`lib/data/productStore.ts`](lib/data/productStore.ts) läser lagret,
-  kontrollerar samtliga rader och skriver tillbaka i EN synkron funktion
-  (bara synkrona `fs`-anrop, inget `await` mellan läsning och skrivning) —
-  Node kör JS entrådigt, så två "samtidiga" köp av samma sista enhet kan
-  aldrig interleava mitt i funktionen inom samma process. Körs innan
-  Stripe kontaktas ([`app/api/checkout/payment-intent/route.ts`](app/api/checkout/payment-intent/route.ts))
+  [`lib/data/productStore.ts`](lib/data/productStore.ts) anropar
+  `reserve_stock` — en atomisk Postgres-funktion som i en enda transaktion
+  låser (`for update`) och kontrollerar samtliga radvaror i en beställning,
+  och bara skriver ner det nya lagersaldot om ALLA rader har tillräckligt
+  lager (allt-eller-inget). Det här är en genuint atomisk operation på
+  databasnivå — till skillnad från en filbaserad läs-ändra-skriv-lösning
+  skyddar den även mot flera samtidiga serverless-instanser (Vercel kan
+  köra flera parallella instanser av samma route, som inte delar
+  processminne). Körs innan Stripe kontaktas
+  ([`app/api/checkout/payment-intent/route.ts`](app/api/checkout/payment-intent/route.ts))
   respektive innan mock-ordern slutförs
   ([`app/api/checkout/confirm/route.ts`](app/api/checkout/confirm/route.ts));
   misslyckas kontrollen avvisas köpet med ett tydligt fel (409) istället
-  för att lagret går under noll. Testat med två parallella requests mot
-  en produkt med exakt 1 i lager: den ena lyckades, den andra fick
-  "finns tyvärr inte i tillräckligt antal längre", och slutligt lagersaldo
-  blev exakt 0.
+  för att lagret går under noll. Testat mot den skarpa databasen med två
+  parallella requests mot en produkt med exakt 1 i lager: den ena
+  lyckades, den andra fick "finns tyvärr inte i tillräckligt antal
+  längre", och slutligt lagersaldo blev exakt 0.
+- **Skydd mot samtidig produktredigering**: `updateProduct` i
+  [`lib/data/productStore.ts`](lib/data/productStore.ts) tar emot det
+  `updated_at`-värde admin såg när redigeringen öppnades, och skriver bara
+  igenom ändringen om `update ... where id = $1 and updated_at = $2`
+  faktiskt träffar en rad. Om en annan admin hunnit spara en ändring
+  emellanåt (annat `updated_at` i databasen) avvisas sparandet med ett
+  tydligt konfliktfel istället för att tyst skriva över den andras
+  ändring. Testat mot den skarpa databasen med två samtidiga
+  produktredigeringar (olika fält, samma produkt): den ena sparades, den
+  andra fick konfliktfelet och ingen av ändringarna gick förlorad tyst.
 - **Server-side validering**: [`lib/validation.ts`](lib/validation.ts)
   validerar leveransuppgifter (e-postformat, obligatoriska fält,
   längdgränser, svenskt postnummerformat) i
@@ -407,10 +505,10 @@ adminknappen, kontrollera i Stripe Dashboard att pengarna går tillbaka).
   HMR kan behöva det), aldrig i produktion.
 - **Intern felloggning** ([`lib/data/errorLogStore.ts`](lib/data/errorLogStore.ts)):
   fångade serverfel i webhooken och betalnings-/återbetalnings-API:erna
-  skrivs till `data/errors.json` (tidsstämpel, felmeddelande, kontext).
-  Ersätter INTE en riktig tjänst (Sentry m.fl., som väntar på ett nytt
-  konto) — ger bara viss insyn under tiden. Visas i en ny flik i admin
-  ("Felloggen", [`components/admin/ErrorLogPanel.tsx`](components/admin/ErrorLogPanel.tsx)
+  skrivs till tabellen `error_logs` i Supabase (tidsstämpel, felmeddelande,
+  kontext). Ersätter INTE en riktig tjänst (Sentry m.fl., som väntar på
+  ett nytt konto) — ger bara viss insyn under tiden. Visas i en ny flik i
+  admin ("Felloggen", [`components/admin/ErrorLogPanel.tsx`](components/admin/ErrorLogPanel.tsx)
   + `GET /api/admin/errors`).
 
 ## Bekräftelsemejl
@@ -426,25 +524,27 @@ mejl.
 
 ## Klart vs. mockat
 
-**Riktigt klart:** all UI och design, produktdata i JSON-fil med riktig
-CRUD + lagerhantering via admin, orderhantering i admin (status,
-betalstatus, sök/filtrering), varukorg (localStorage + lagerkoll mot
-katalogen), filtrering/sortering, checkout-flödets steg och validering,
-adminlösenord via miljövariabel med serverside-koll, nyhetsbrevs-signup med
-persistent lagring, bekräftelsemejl-integration (no-op utan nyckel),
-per-sida `<title>`/meta description, responsiv design, UTM-attribution
-end-to-end, statistik-dashboarden med Excel-export, och **hela
-Stripe Elements + Klarna-integrationen (kod och arkitektur)** — enda som
-saknas för att den ska vara skarp är själva Stripe-kontot och test enligt
-avsnittet "Stripe / betalning" ovan.
+**Riktigt klart:** all UI och design, produktdata i Supabase med riktig
+CRUD + lagerhantering via admin (atomiskt lagerskydd, se "Robusthet &
+säkerhet"), orderhantering i admin (status, betalstatus, sök/filtrering),
+varukorg (localStorage + lagerkoll mot katalogen), filtrering/sortering,
+checkout-flödets steg och validering, adminlösenord via miljövariabel med
+serverside-koll, nyhetsbrevs-signup med persistent lagring i Supabase,
+bekräftelsemejl-integration (no-op utan nyckel), per-sida `<title>`/meta
+description, responsiv design, UTM-attribution end-to-end,
+statistik-dashboarden med Excel-export, hela datalagret migrerat från
+lokala JSON-filer till Supabase Postgres med Row Level Security (se
+"Datalagring / Supabase" ovan — löser kraschen som uppstod av Vercels
+read-only filsystem i produktion), och **hela Stripe Elements +
+Klarna-integrationen (kod och arkitektur)** — enda som saknas för att den
+ska vara skarp är själva Stripe-kontot och test enligt avsnittet
+"Stripe / betalning" ovan.
 
 **Medvetet mockat tills Stripe-konto finns:** betalningen körs i simulerat
 läge (se `lib/checkout.ts`/`app/api/checkout/confirm/route.ts`) tills
 `STRIPE_SECRET_KEY`/`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` läggs in. Utöver
-det: datalagring via JSON-filer istället för databas (fungerar lokalt,
-försvinner mellan deploys på Vercel — se "Datalagring" ovan),
-bekräftelsemejl skickas bara om `RESEND_API_KEY` är satt, `costPrice` är
-platshållarvärden (se "Statistik / analytics" ovan).
+det: bekräftelsemejl skickas bara om `RESEND_API_KEY` är satt, `costPrice`
+är platshållarvärden (se "Statistik / analytics" ovan).
 
 **Inte hunnet / medvetet avgränsat:**
 - Lagersaldo dras inte automatiskt vid en genomförd beställning — det är
