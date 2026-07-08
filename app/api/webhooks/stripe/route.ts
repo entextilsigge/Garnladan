@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripeClient, isStripeConfigured } from "@/lib/stripe";
-import { getOrderById, updatePaymentMethod, updatePaymentStatus } from "@/lib/data/orderStore";
+import { getOrderById } from "@/lib/data/orderStore";
 import { hasProcessedEvent, markEventProcessed } from "@/lib/data/webhookEventStore";
 import { logError } from "@/lib/data/errorLogStore";
-import { sendOrderConfirmationEmail } from "@/lib/email";
+import { applyPaymentIntentOutcome } from "@/lib/orders";
 
 // ---------------------------------------------------------------------------
 // Stripe-webhook — SANNINGSKÄLLAN för om en order faktiskt är betald.
@@ -78,13 +78,12 @@ export async function POST(request: Request) {
       const orderId = paymentIntent.metadata?.orderId;
 
       if (orderId && getOrderById(orderId)) {
-        const status = event.type === "payment_intent.succeeded" ? "paid" : "failed";
-        const updated = updatePaymentStatus(orderId, status);
-        if (updated && status === "paid") {
-          const method = await resolveActualPaymentMethod(paymentIntent.id);
-          if (method) updatePaymentMethod(orderId, method);
-          await sendOrderConfirmationEmail(updated);
-        }
+        const outcome = event.type === "payment_intent.succeeded" ? "paid" : "failed";
+        // applyPaymentIntentOutcome är själv idempotent (no-op om ordern
+        // redan lämnat "pending") — skyddar mot att webhooken och admins
+        // manuella avstämningsknapp (app/api/admin/orders/[id]/reconcile)
+        // racear och båda försöker applicera samma utfall.
+        await applyPaymentIntentOutcome(orderId, outcome, paymentIntent.id);
       }
     }
   } catch (err) {
@@ -99,27 +98,4 @@ export async function POST(request: Request) {
 
   markEventProcessed(event.id);
   return NextResponse.json({ received: true });
-}
-
-/**
- * Den PaymentIntent som följer med webhook-eventet har bara `payment_method`
- * som ett oexpanderat ID, och den här Stripe SDK-versionen har tagit bort
- * det äldre `charges`-fältet till förmån för `latest_charge`. Ett riktat
- * retrieve-anrop med expand behövs alltså för att få fram den faktiska
- * betalmetoden (t.ex. "card", "klarna") istället för den generiska
- * "stripe"-etiketten som sätts när PaymentIntenten skapas.
- */
-async function resolveActualPaymentMethod(paymentIntentId: string): Promise<string | null> {
-  try {
-    const pi = await getStripeClient().paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"],
-    });
-    const charge = pi.latest_charge;
-    if (charge && typeof charge === "object") {
-      return charge.payment_method_details?.type ?? null;
-    }
-  } catch (err) {
-    console.error(`[stripe-webhook] Kunde inte hämta betalmetod för ${paymentIntentId}`, err);
-  }
-  return null;
 }

@@ -17,11 +17,22 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
-  const updated = updateProduct(params.id, body);
-  if (!updated) {
+  const expectedUpdatedAt = typeof body.updatedAt === "string" ? body.updatedAt : undefined;
+  const result = updateProduct(params.id, body, expectedUpdatedAt);
+  if (!result.ok) {
+    if (result.reason === "conflict") {
+      return NextResponse.json(
+        {
+          error:
+            "Denna produkt har ändrats av någon annan sedan du öppnade den — ladda om och försök igen.",
+          current: result.current,
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: "Produkten hittades inte." }, { status: 404 });
   }
-  return NextResponse.json({ product: updated });
+  return NextResponse.json({ product: result.product });
 }
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {

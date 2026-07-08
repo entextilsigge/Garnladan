@@ -35,6 +35,11 @@ export default function OrderDetailModal({
   const [refunding, setRefunding] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
 
+  const canReconcile = order.paymentStatus === "pending" && Boolean(order.paymentIntentId);
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState<string | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+
   const restockedKeys = new Set(order.restockedItemKeys ?? []);
   const returnableItems = order.items.filter((item) => !restockedKeys.has(itemKey(item.slug, item.colorName)));
   const [selectedReturns, setSelectedReturns] = useState<Set<string>>(new Set());
@@ -65,6 +70,26 @@ export default function OrderDetailModal({
       onUpdated(data.order);
     } finally {
       setRefunding(false);
+    }
+  }
+
+  async function handleReconcile() {
+    setReconcileError(null);
+    setReconcileMessage(null);
+    setReconciling(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/reconcile`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setReconcileError(data?.error ?? "Kunde inte kontrollera betalstatus.");
+        return;
+      }
+      setReconcileMessage(data.message ?? null);
+      if (data.order) onUpdated(data.order);
+    } finally {
+      setReconciling(false);
     }
   }
 
@@ -141,6 +166,33 @@ export default function OrderDetailModal({
             )}
           </div>
         </div>
+
+        {canReconcile && (
+          <div className="mt-4 rounded-2xl bg-senap/10 p-4">
+            <p className="text-sm font-medium text-kol">
+              Ordern väntar fortfarande på betalningsbekräftelse.
+            </p>
+            <p className="mt-1 text-xs text-mull">
+              Om det tar ovanligt lång tid kan webhooken ha missat eventet
+              (t.ex. felkonfigurerad i produktion) — kontrollera direkt hos
+              Stripe istället för att vänta.
+            </p>
+            <button
+              type="button"
+              onClick={handleReconcile}
+              disabled={reconciling}
+              className="mt-3 rounded-full border border-kol/15 px-5 py-2 text-xs font-semibold text-kol transition-colors hover:bg-linne disabled:opacity-60"
+            >
+              {reconciling ? "Kontrollerar…" : "Kontrollera betalstatus hos Stripe"}
+            </button>
+            {reconcileMessage && (
+              <p className="mt-2 text-sm font-medium text-gran">{reconcileMessage}</p>
+            )}
+            {reconcileError && (
+              <p className="mt-2 text-sm font-medium text-tegel-dark">{reconcileError}</p>
+            )}
+          </div>
+        )}
 
         <table className="mt-6 w-full text-left text-sm">
           <thead>

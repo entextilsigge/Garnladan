@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 export default function Footer() {
   return (
@@ -39,20 +40,20 @@ export default function Footer() {
             Hitta till ladan
           </p>
           <address className="mt-4 space-y-2.5 text-sm not-italic leading-relaxed">
-            <p>Garnladan AB<br />Vargön</p>
-            <p>hej@garnladan.se<br />0521-123 45</p>
+            <p>{COMPANY_INFO.name}<br />Vargön</p>
+            <p>{COMPANY_INFO.email}<br />{COMPANY_INFO.phone}</p>
           </address>
         </div>
       </div>
       <div className="border-t border-krita/10">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-5 text-xs text-krita/50 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>© {new Date().getFullYear()} Garnladan AB. Alla rättigheter förbehållna.</p>
+          <p>© {new Date().getFullYear()} {COMPANY_INFO.legalName}. Alla rättigheter förbehållna.</p>
           <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
             <li><Link href="/villkor" className="transition-colors hover:text-krita">Allmänna villkor</Link></li>
             <li><Link href="/villkor/angerratt" className="transition-colors hover:text-krita">Ångerrätt</Link></li>
             <li><Link href="/integritetspolicy" className="transition-colors hover:text-krita">Integritetspolicy</Link></li>
           </ul>
-          <p>Org.nr 559123-4567 · Priser inkl. moms</p>
+          <p>Org.nr {COMPANY_INFO.orgNumber} · Priser inkl. moms</p>
         </div>
       </div>
     </footer>

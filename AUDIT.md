@@ -5,15 +5,22 @@ inte ett nytt funktionsbygge. Lågriskbuggar är fixade direkt (markerade
 **[ÅTGÄRDAT]** nedan); allt som rör pengar, data, juridik eller är en
 designfråga listas för beslut istället för att gissas bort.
 
-Sammanfattning: **4 blockerande**, **11 viktiga** (varav 5 redan åtgärdade),
-**7 mindre** fynd. Se slutet av dokumentet för direktfixarna som redan är
-gjorda, samt `npm run build`/`npm audit`-resultat.
+Sammanfattning: **4 blockerande** (3 nu åtgärdade, 1 delvis), **11 viktiga**
+(8 nu åtgärdade), **7 mindre** fynd. Se slutet av dokumentet för
+direktfixarna som redan är gjorda, samt `npm run build`/`npm audit`-resultat.
+
+> **Uppdatering, Uppdrag 12 (2026-07-08):** samtliga beslut nedan som krävde
+> Sigges input är nu åtgärdade — se **[ÅTGÄRDAT UPPDRAG 12]**-markeringar vid
+> B2, B3, B4 (delvis, se not), V5 och V6/V7. B1 (juridiksidornas
+> "utkast"-baner) kvarstår medvetet — det kräver en faktisk juridisk
+> granskning, inte en kodändring. Se commit-meddelandet för uppdrag 12 för
+> fullständig sammanfattning av vad som testades och hur.
 
 ---
 
 ## Blockerande — måste lösas innan lansering
 
-### B1. Juridiksidorna visar ett "detta är ett utkast"-baner till riktiga kunder
+### B1. Juridiksidorna visar ett "detta är ett utkast"-baner till riktiga kunder **[DELVIS ÅTGÄRDAT UPPDRAG 12]**
 `app/villkor/page.tsx`, `app/villkor/angerratt/page.tsx` och
 `app/integritetspolicy/page.tsx` renderar alla ovillkorligt en ruta i stil
 med:
@@ -31,7 +38,13 @@ banner + "Cedra"-referensen, eller (b) medvetet skjuta upp lanseringen av
 dessa sidor tills granskning skett. Detta är ett beslut för dig, inte något
 jag ska gissa mig förbi.
 
-### B2. "30 dagars öppet köp" på kassasidan motsäger den faktiska 14-dagars ångerrätten
+**Uppdrag 12:** "Cedra"-referensen är borttagen från
+`app/integritetspolicy/page.tsx` (ersatt med samma generiska formulering som
+villkor/ångerrätt redan använde). Själva "utkast, ej juridiskt granskat"-
+banern kvarstår oförändrad på alla tre sidorna — den kräver en faktisk
+juridisk genomläsning, inte en kodändring, och ingår inte i uppdrag 12.
+
+### B2. "30 dagars öppet köp" på kassasidan motsäger den faktiska 14-dagars ångerrätten **[ÅTGÄRDAT UPPDRAG 12]**
 `app/kassa/page.tsx:19`: *"Tryggt köp med 30 dagars öppet köp och snabb
 leverans från ladan."*
 
@@ -46,7 +59,13 @@ konsekvent överallt, eller ändra kassatexten till att matcha den lagstadgade
 14-dagarsrätten som resten av sajten redan utgår från. Affärsbeslut, inte en
 kodfix.
 
-### B3. Ordrar kan fastna permanent som "Väntar betalning" om Stripe-webhooken aldrig kommer fram
+**Uppdrag 12:** `app/kassa/page.tsx` säger nu "14 dagars ångerrätt", i linje
+med resten av sajten. Hela kodbasen genomsökt (`grep -rn "30 dagar"`) —
+de enda kvarvarande träffarna (UTM-cookiens livslängd i
+integritetspolicyn, och analytics-panelens "senaste 30 dagar"-filter) är
+orelaterade till returer/ånger.
+
+### B3. Ordrar kan fastna permanent som "Väntar betalning" om Stripe-webhooken aldrig kommer fram **[ÅTGÄRDAT UPPDRAG 12]**
 Webhooken (`app/api/webhooks/stripe/route.ts`) är designad som enda
 sanningskälla för betalstatus — en medveten och korrekt arkitekturprincip.
 Men det finns ingen avstämning/reconciliation som upptäcker och rättar till
@@ -70,6 +89,20 @@ kräver att webhooken testas end-to-end (skicka ett riktigt test-event från
 Stripe Dashboard) innan `STRIPE_SECRET_KEY` sätts i produktion. Jag har
 inte byggt någon av delarna eftersom det är en avvägning mellan komplexitet
 och risk som du bör besluta om.
+
+**Uppdrag 12:** byggde (a) — `POST /api/admin/orders/[id]/reconcile` slår
+upp PaymentIntentens faktiska status direkt hos Stripe och uppdaterar
+ordern om den redan är `succeeded`/`canceled`, oberoende av webhooken. Ny
+"Kontrollera betalstatus hos Stripe"-knapp i orderdetaljvyn (synlig när en
+order är `pending` och har ett `paymentIntentId`). Orderlistan flaggar
+dessutom visuellt (⚠) ordrar som väntat på betalning i över 30 minuter, så
+personalen ser dem utan att leta. Webhooken och avstämningsknappen delar nu
+samma idempotenta funktion (`applyPaymentIntentOutcome` i `lib/orders.ts`)
+— vem som än kommer fram först vinner, den andra blir ett no-op istället
+för att t.ex. skicka dubbla bekräftelsemejl. Den faktiska
+`stripe.paymentIntents.retrieve`-anropet mot ett riktigt betalt PaymentIntent
+kunde inte testas live (kräver ett riktigt Stripe-testkonto, som ännu inte
+finns) — se commit-meddelandet för exakt vad som testades istället.
 
 ### B4. `ADMIN_PASSWORD` föll tillbaka på ett hårdkodat lösenord även i produktion **[ÅTGÄRDAT]**
 `lib/adminAuth.ts` returnerade tidigare dev-lösenordet `"garn"` oavsett
@@ -136,7 +169,7 @@ implementationsdetaljer.
 **Åtgärdat:** generiska svenska meddelanden ersätter nu den råa texten;
 fullständigt fel finns kvar i felloggen (`logError`) för felsökning.
 
-### V5. Concurrency-risk: två admins som redigerar samma produkt samtidigt
+### V5. Concurrency-risk: två admins som redigerar samma produkt samtidigt **[ÅTGÄRDAT UPPDRAG 12]**
 `components/admin/ProductForm.tsx` laddar en produkt en gång, håller hela
 formuläret i lokalt state, och skickar HELA objektet vid spara — inte bara
 ändrade fält. Om två admin-sessioner (t.ex. samma lösenord på två enheter)
@@ -152,7 +185,16 @@ avvägning mellan enkelhet (dagens beteende, "sista vinner") och robusthet
 som du bör ta ställning till — särskilt eftersom det i praktiken troligen
 bara är du som administrerar sajten.
 
-### V6. Möjlig dubbel-återbetalning vid snabba parallella anrop
+**Uppdrag 12:** byggd som föreslaget. `Product` har nu ett `updatedAt`,
+och `updateProduct` (`lib/data/productStore.ts`) avvisar sparandet med ett
+tydligt fel om den inskickade versionen inte matchar produktens nuvarande
+`updatedAt`. Testat live: två simulerade admin-sessioner laddade samma
+produkt, admin A sparade (lyckades), admin B försökte sedan spara med sin
+nu inaktuella version — fick korrekt 409 "Denna produkt har ändrats av
+någon annan sedan du öppnade den — ladda om och försök igen." istället för
+att tyst skriva över admin A:s ändring.
+
+### V6. Möjlig dubbel-återbetalning vid snabba parallella anrop **[ÅTGÄRDAT UPPDRAG 12]**
 `app/api/admin/orders/[id]/refund/route.ts` kontrollerar `remaining` innan
 `stripe.refunds.create` anropas, men gör det utan låsning. Två nästan
 samtidiga POST-anrop (t.ex. dubbelklick som hinner före `disabled`-state i
@@ -164,7 +206,15 @@ UI:t, eller två öppna admin-flikar) skulle båda kunna passera
 ditt godkännande. En enkel lösning vore en kort in-memory-lås per order-id
 (samma mönster som `lib/rateLimit.ts`) runt hela refund-anropet.
 
-### V7. Platshållar-företagsuppgifter utan varningsflagga
+**Uppdrag 12:** byggd som föreslaget (`lib/orderLock.ts`) — hela
+återbetalningsflödet (kontroll av återstående belopp → Stripe-anrop →
+`recordRefund`) körs nu bakom ett per-order-lås. Testat live med två
+genuint samtidiga POST-anrop mot samma order: exakt ett anrop kom igenom
+till Stripe-steget, det andra fick omedelbart 409 "En återbetalning för
+den här ordern pågår redan". Bekräftat att låset släpps korrekt efteråt
+(ett tredje, icke-samtidigt anrop gick igenom som vanligt).
+
+### V7. Platshållar-företagsuppgifter utan varningsflagga **[ÅTGÄRDAT UPPDRAG 12]**
 Org.nr `559123-4567`, telefon `0521-123 45` och e-post `hej@garnladan.se`
 återges som fakta i `components/Footer.tsx`, `app/villkor/page.tsx` och
 `app/integritetspolicy/page.tsx`. `lib/company-info.ts` flaggar uttryckligen
@@ -175,6 +225,16 @@ vanligt exempelnummer. En kund som ringer `0521-123 45` eller mejlar
 
 **Förslag:** bekräfta att alla dessa är riktiga, registrerade värden innan
 lansering.
+
+**Uppdrag 12:** ersatta med riktiga uppgifter överallt — org.nr
+`556747-1031`, `kontoret@entextil.se`, `070-367 33 19`. Samtidigt
+upptäcktes att platshållar-företagsnamnet "Garnladan AB" (använt i
+ägarförbehåll, copyright och kontaktuppgifter) inte matchade den riktiga
+juridiska personen bakom butiken — uppdaterat till att skilja på
+butiksnamnet "Garnladan" och den juridiska personen "E.N. Textil AB" (se
+`lib/company-info.ts`, nu `COMPANY_INFO.name` respektive `.legalName`).
+Returadressen i samma fil är fortfarande en obekräftad platshållare (inte
+del av detta uppdrag) — flaggad separat i koden.
 
 ### V8. Inkonsekvent leveranslöfte: "skickas" vs. "packas" inom 24 timmar
 `components/Header.tsx`, `components/ProductDetail.tsx` lovar *"Skickas

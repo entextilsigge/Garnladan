@@ -5,6 +5,7 @@ import { getOrderById, recordRefund, markItemsRestocked } from "@/lib/data/order
 import { adjustColorwayStock } from "@/lib/data/productStore";
 import { sendRefundConfirmationEmail } from "@/lib/email";
 import { logError } from "@/lib/data/errorLogStore";
+import { acquireOrderLock, releaseOrderLock } from "@/lib/orderLock";
 
 // ---------------------------------------------------------------------------
 // Riktig återbetalning mot Stripe (stripe.refunds.create), inte bara en
@@ -21,6 +22,12 @@ import { logError } from "@/lib/data/errorLogStore";
 // lagerjustering — för felkänsligt att gissa vilka rader som returnerats
 // utifrån ett delbelopp. Admin bekräftar istället manuellt rad för rad via
 // POST .../restock.
+//
+// LÅS: hela flödet (kontroll av återstående belopp → Stripe-anrop →
+// recordRefund) körs bakom ett per-order-lås (lib/orderLock.ts). Utan det
+// skulle två nästan samtidiga anrop (dubbelklick, två admin-flikar) kunna
+// båda läsa samma "återstående belopp" innan någon hunnit skriva, och
+// tillsammans återbetala mer än ordersumman.
 // ---------------------------------------------------------------------------
 
 function itemKey(slug: string, colorName: string): string {
@@ -45,82 +52,93 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "Ogiltigt återbetalningsbelopp." }, { status: 400 });
   }
 
-  const order = getOrderById(params.id);
-  if (!order) {
-    return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
-  }
-  if (!order.paymentIntentId) {
+  if (!acquireOrderLock(params.id)) {
     return NextResponse.json(
-      { error: "Ordern saknar ett Stripe-betalnings-id och kan inte återbetalas här (mockad/manuell order)." },
-      { status: 400 }
-    );
-  }
-  if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
-    return NextResponse.json(
-      { error: "Ordern kan inte återbetalas i sitt nuvarande betalstatus." },
-      { status: 400 }
+      { error: "En återbetalning för den här ordern pågår redan — vänta tills den är klar och försök igen." },
+      { status: 409 }
     );
   }
 
-  const alreadyRefunded = (order.refunds ?? []).reduce((sum, r) => sum + r.amount, 0);
-  const remaining = order.total - alreadyRefunded;
-  // Litet epsilon för att tolerera flyttalsavrundning (öre↔kr).
-  if (amount > remaining + 0.01) {
-    return NextResponse.json(
-      { error: `Beloppet överstiger vad som återstår att återbetala (${remaining} kr).` },
-      { status: 400 }
-    );
-  }
-
-  const stripe = getStripeClient();
-  let refund;
   try {
-    refund = await stripe.refunds.create({
-      payment_intent: order.paymentIntentId,
-      amount: Math.round(amount * 100),
+    const order = getOrderById(params.id);
+    if (!order) {
+      return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
+    }
+    if (!order.paymentIntentId) {
+      return NextResponse.json(
+        { error: "Ordern saknar ett Stripe-betalnings-id och kan inte återbetalas här (mockad/manuell order)." },
+        { status: 400 }
+      );
+    }
+    if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
+      return NextResponse.json(
+        { error: "Ordern kan inte återbetalas i sitt nuvarande betalstatus." },
+        { status: 400 }
+      );
+    }
+
+    const alreadyRefunded = (order.refunds ?? []).reduce((sum, r) => sum + r.amount, 0);
+    const remaining = order.total - alreadyRefunded;
+    // Litet epsilon för att tolerera flyttalsavrundning (öre↔kr).
+    if (amount > remaining + 0.01) {
+      return NextResponse.json(
+        { error: `Beloppet överstiger vad som återstår att återbetala (${remaining} kr).` },
+        { status: 400 }
+      );
+    }
+
+    const stripe = getStripeClient();
+    let refund;
+    try {
+      refund = await stripe.refunds.create({
+        payment_intent: order.paymentIntentId,
+        amount: Math.round(amount * 100),
+      });
+    } catch (err) {
+      logError(
+        err instanceof Error ? err.message : "Okänt fel vid återbetalning",
+        `admin/orders/${params.id}/refund`
+      );
+      // Visa aldrig Stripes råa felmeddelande i admin — fullständigt fel finns
+      // i felloggen (logError ovan) om det behöver felsökas.
+      return NextResponse.json(
+        { error: "Återbetalningen misslyckades hos Stripe. Försök igen eller kontrollera i Stripe Dashboard." },
+        { status: 502 }
+      );
+    }
+
+    const refundId = `rf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    let updated = recordRefund(params.id, {
+      id: refundId,
+      stripeRefundId: refund.id,
+      amount,
+      createdAt: new Date().toISOString(),
     });
-  } catch (err) {
-    logError(
-      err instanceof Error ? err.message : "Okänt fel vid återbetalning",
-      `admin/orders/${params.id}/refund`
-    );
-    // Visa aldrig Stripes råa felmeddelande i admin — fullständigt fel finns
-    // i felloggen (logError ovan) om det behöver felsökas.
-    return NextResponse.json(
-      { error: "Återbetalningen misslyckades hos Stripe. Försök igen eller kontrollera i Stripe Dashboard." },
-      { status: 502 }
-    );
-  }
-
-  const refundId = `rf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  let updated = recordRefund(params.id, {
-    id: refundId,
-    stripeRefundId: refund.id,
-    amount,
-    createdAt: new Date().toISOString(),
-  });
-  if (!updated) {
-    return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
-  }
-
-  // Full återbetalning (ordern är nu helt återbetald): lägg tillbaka lagret
-  // för alla rader som inte redan är återlagda.
-  if (updated.paymentStatus === "refunded") {
-    const restockedKeys = new Set(updated.restockedItemKeys ?? []);
-    const toRestock = updated.items.filter((item) => !restockedKeys.has(itemKey(item.slug, item.colorName)));
-    for (const item of toRestock) {
-      adjustColorwayStock(item.slug, item.colorName, item.quantity);
+    if (!updated) {
+      return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
     }
-    if (toRestock.length > 0) {
-      updated =
-        markItemsRestocked(
-          params.id,
-          toRestock.map((item) => itemKey(item.slug, item.colorName))
-        ) ?? updated;
+
+    // Full återbetalning (ordern är nu helt återbetald): lägg tillbaka lagret
+    // för alla rader som inte redan är återlagda.
+    if (updated.paymentStatus === "refunded") {
+      const restockedKeys = new Set(updated.restockedItemKeys ?? []);
+      const toRestock = updated.items.filter((item) => !restockedKeys.has(itemKey(item.slug, item.colorName)));
+      for (const item of toRestock) {
+        adjustColorwayStock(item.slug, item.colorName, item.quantity);
+      }
+      if (toRestock.length > 0) {
+        updated =
+          markItemsRestocked(
+            params.id,
+            toRestock.map((item) => itemKey(item.slug, item.colorName))
+          ) ?? updated;
+      }
     }
+
+    await sendRefundConfirmationEmail(updated, amount);
+
+    return NextResponse.json({ order: updated });
+  } finally {
+    releaseOrderLock(params.id);
   }
-
-  await sendRefundConfirmationEmail(updated, amount);
-
-  return NextResponse.json({ order: updated });
 }

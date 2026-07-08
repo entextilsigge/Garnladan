@@ -171,7 +171,7 @@ export default function AngerFormular() {
           Skriv ut / spara som PDF
         </button>
         <a
-          href={`mailto:hej@garnladan.se?subject=${encodeURIComponent(
+          href={`mailto:${COMPANY_INFO.email}?subject=${encodeURIComponent(
             `Ångerrätt — order ${fields.orderId || ""}`
           )}&body=${mailtoBody()}`}
           className="rounded-full border border-kol/15 px-6 py-3 text-center text-sm font-medium text-kol transition-colors hover:bg-linne"

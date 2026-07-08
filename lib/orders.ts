@@ -1,6 +1,15 @@
 import type { PendingSession } from "@/lib/data/checkoutSessionStore";
-import { createOrder, type Order, type PaymentStatus } from "@/lib/data/orderStore";
+import {
+  createOrder,
+  getOrderById,
+  updatePaymentMethod,
+  updatePaymentStatus,
+  type Order,
+  type PaymentStatus,
+} from "@/lib/data/orderStore";
 import { SHIPPING_OPTIONS } from "@/lib/checkout";
+import { resolveActualPaymentMethod } from "@/lib/stripe";
+import { sendOrderConfirmationEmail } from "@/lib/email";
 
 // Delad mellan det mockade flödet (app/api/checkout/confirm/route.ts) och
 // det riktiga Stripe-flödet (app/api/checkout/payment-intent/route.ts) —
@@ -44,4 +53,40 @@ export function createOrderFromSession(
   };
 
   return createOrder(order);
+}
+
+/**
+ * Applicerar utfallet av en PaymentIntent (från webhooken ELLER från
+ * admins manuella avstämningsknapp, se app/api/admin/orders/[id]/
+ * reconcile/route.ts) på en order — delad så båda vägarna garanterat
+ * hanterar samma order likadant, oavsett vilken som kommer fram först.
+ *
+ * Idempotent by design: gör INGENTING om ordern redan lämnat "pending"
+ * (t.ex. redan flippad av webhooken, eller redan återbetald). Det är detta
+ * — inte ett låst state — som gör det säkert att låta webhooken och en
+ * manuell avstämning racea mot varandra: vem som än kommer fram först
+ * "vinner", och den andra blir ett no-op istället för att skicka ett
+ * dubbelt bekräftelsemejl eller skriva över en nyare status.
+ */
+export async function applyPaymentIntentOutcome(
+  orderId: string,
+  outcome: "paid" | "failed",
+  paymentIntentId: string
+): Promise<{ changed: boolean; order: Order | null }> {
+  const current = getOrderById(orderId);
+  if (!current || current.paymentStatus !== "pending") {
+    return { changed: false, order: current ?? null };
+  }
+
+  const updated = updatePaymentStatus(orderId, outcome);
+  if (!updated) return { changed: false, order: null };
+
+  if (outcome === "paid") {
+    const method = await resolveActualPaymentMethod(paymentIntentId);
+    const withMethod = method ? updatePaymentMethod(orderId, method) ?? updated : updated;
+    await sendOrderConfirmationEmail(withMethod);
+    return { changed: true, order: withMethod };
+  }
+
+  return { changed: true, order: updated };
 }

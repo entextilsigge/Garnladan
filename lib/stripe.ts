@@ -27,3 +27,28 @@ export function getStripeClient(): Stripe {
   }
   return cachedClient;
 }
+
+/**
+ * Den PaymentIntent som följer med ett webhook-event (eller ett vanligt
+ * retrieve-anrop) har bara `payment_method` som ett oexpanderat ID, och
+ * denna Stripe SDK-version har tagit bort det äldre `charges`-fältet till
+ * förmån för `latest_charge`. Ett riktat retrieve-anrop med expand behövs
+ * alltså för att få fram den faktiska betalmetoden (t.ex. "card", "klarna")
+ * istället för den generiska "stripe"-etiketten som sätts när
+ * PaymentIntenten skapas. Delad mellan webhooken och den manuella
+ * avstämningsknappen i admin, så båda vägarna sätter samma faktiska metod.
+ */
+export async function resolveActualPaymentMethod(paymentIntentId: string): Promise<string | null> {
+  try {
+    const pi = await getStripeClient().paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"],
+    });
+    const charge = pi.latest_charge;
+    if (charge && typeof charge === "object") {
+      return charge.payment_method_details?.type ?? null;
+    }
+  } catch (err) {
+    console.error(`[stripe] Kunde inte hämta betalmetod för ${paymentIntentId}`, err);
+  }
+  return null;
+}

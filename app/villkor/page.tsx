@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 export const metadata: Metadata = {
   title: "Allmänna villkor",
@@ -17,9 +18,9 @@ export default function VillkorPage() {
         Allmänna villkor
       </h1>
       <p className="mt-4 text-mull">
-        Dessa villkor gäller när du handlar hos Garnladan AB (org.nr
-        559123-4567), Vargön. Genom att slutföra ett köp godkänner du
-        villkoren nedan.
+        Dessa villkor gäller när du handlar hos {COMPANY_INFO.name}, som drivs
+        av {COMPANY_INFO.legalName} (org.nr {COMPANY_INFO.orgNumber}), Vargön.
+        Genom att slutföra ett köp godkänner du villkoren nedan.
       </p>
 
       <div className="mt-10 rounded-2xl bg-senap/10 px-6 py-5 text-sm text-kol">
@@ -62,8 +63,8 @@ export default function VillkorPage() {
         <p className="text-mull leading-relaxed">
           Om leveransen blir väsentligt försenad utan att vi meddelat dig i
           förväg har du rätt att kontakta oss på{" "}
-          <a href="mailto:hej@garnladan.se" className="text-tegel underline underline-offset-2">
-            hej@garnladan.se
+          <a href={`mailto:${COMPANY_INFO.email}`} className="text-tegel underline underline-offset-2">
+            {COMPANY_INFO.email}
           </a>{" "}
           och, om förseningen är väsentlig, häva köpet enligt
           konsumentköplagen.
@@ -78,8 +79,8 @@ export default function VillkorPage() {
           Enligt konsumentköplagen har du som konsument tre års
           reklamationsrätt på varor som är felaktiga vid leverans
           (ursprungliga fel). Kontakta oss på{" "}
-          <a href="mailto:hej@garnladan.se" className="text-tegel underline underline-offset-2">
-            hej@garnladan.se
+          <a href={`mailto:${COMPANY_INFO.email}`} className="text-tegel underline underline-offset-2">
+            {COMPANY_INFO.email}
           </a>{" "}
           med ordernummer och en beskrivning av felet. Vid en godkänd
           reklamation står vi för returfrakten och du får varan reparerad,
@@ -108,8 +109,8 @@ export default function VillkorPage() {
           6. Ägarförbehåll
         </h2>
         <p className="text-mull leading-relaxed">
-          Varan förblir Garnladan AB:s egendom fram till dess att den
-          fullständigt betalats (t.ex. vid delbetalning via Klarna).
+          Varan förblir {COMPANY_INFO.legalName}:s egendom fram till dess att
+          den fullständigt betalats (t.ex. vid delbetalning via Klarna).
         </p>
       </section>
 
@@ -134,8 +135,8 @@ export default function VillkorPage() {
         </h2>
         <p className="text-mull leading-relaxed">
           Kontakta oss alltid först på{" "}
-          <a href="mailto:hej@garnladan.se" className="text-tegel underline underline-offset-2">
-            hej@garnladan.se
+          <a href={`mailto:${COMPANY_INFO.email}`} className="text-tegel underline underline-offset-2">
+            {COMPANY_INFO.email}
           </a>{" "}
           — de flesta ärenden löser vi direkt. Går det inte att lösa
           tvisten kan du vända dig till Allmänna reklamationsnämnden (ARN),
@@ -176,8 +177,9 @@ export default function VillkorPage() {
           10. Kontakt
         </h2>
         <p className="text-mull leading-relaxed">
-          Garnladan AB, Vargön · hej@garnladan.se · 0521-123 45 · Org.nr
-          559123-4567
+          {COMPANY_INFO.name} drivs av {COMPANY_INFO.legalName}, Vargön ·{" "}
+          {COMPANY_INFO.email} · {COMPANY_INFO.phone} · Org.nr{" "}
+          {COMPANY_INFO.orgNumber}
         </p>
       </section>
     </div>

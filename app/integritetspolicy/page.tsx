@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 export const metadata: Metadata = {
   title: "Integritetspolicy",
@@ -17,16 +18,17 @@ export default function IntegritetspolicyPage() {
         Integritetspolicy
       </h1>
       <p className="mt-4 text-mull">
-        Den här sidan förklarar vilka personuppgifter Garnladan AB
-        (org.nr 559123-4567, Vargön) samlar in när du handlar eller
-        besöker vår sajt, varför, hur länge, och vilka rättigheter du har.
+        Den här sidan förklarar vilka personuppgifter {COMPANY_INFO.name},
+        som drivs av {COMPANY_INFO.legalName} (org.nr {COMPANY_INFO.orgNumber},
+        Vargön), samlar in när du handlar eller besöker vår sajt, varför, hur
+        länge, och vilka rättigheter du har.
       </p>
 
       <div className="mt-10 rounded-2xl bg-senap/10 px-6 py-5 text-sm text-kol">
         <strong className="font-semibold">Observera:</strong> det här är ett
         förslag/utkast till integritetspolicy och är inte juridisk
         rådgivning. Innehållet behöver granskas av en jurist eller revisor
-        (t.ex. Cedra) innan det publiceras i skarp drift.
+        innan det publiceras i skarp drift.
       </div>
 
       <section className="mt-10 space-y-3">
@@ -147,8 +149,8 @@ export default function IntegritetspolicyPage() {
         </ul>
         <p className="text-mull leading-relaxed">
           Kontakta oss på{" "}
-          <a href="mailto:hej@garnladan.se" className="text-tegel underline underline-offset-2">
-            hej@garnladan.se
+          <a href={`mailto:${COMPANY_INFO.email}`} className="text-tegel underline underline-offset-2">
+            {COMPANY_INFO.email}
           </a>{" "}
           för att utöva någon av dessa rättigheter. Du har även rätt att
           klaga till Integritetsskyddsmyndigheten (IMY) om du anser att vi
@@ -161,9 +163,10 @@ export default function IntegritetspolicyPage() {
           Personuppgiftsansvarig
         </h2>
         <p className="text-mull leading-relaxed">
-          Garnladan AB, Vargön · hej@garnladan.se · 0521-123 45 · Org.nr
-          559123-4567 är personuppgiftsansvarig för behandlingen som
-          beskrivs här.
+          {COMPANY_INFO.name} drivs av {COMPANY_INFO.legalName}, Vargön ·{" "}
+          {COMPANY_INFO.email} · {COMPANY_INFO.phone} · Org.nr{" "}
+          {COMPANY_INFO.orgNumber} är personuppgiftsansvarig för
+          behandlingen som beskrivs här.
         </p>
       </section>
 

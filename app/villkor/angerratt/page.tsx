@@ -54,8 +54,8 @@ export default function AngerrattPage() {
         <p className="text-mull leading-relaxed">
           Meddela oss innan ångerfristen har löpt ut genom att skicka den
           ifyllda blanketten längre ner på den här sidan till{" "}
-          <a href="mailto:hej@garnladan.se" className="text-tegel underline underline-offset-2">
-            hej@garnladan.se
+          <a href={`mailto:${COMPANY_INFO.email}`} className="text-tegel underline underline-offset-2">
+            {COMPANY_INFO.email}
           </a>
           , eller skriv till oss på egen hand med ordernummer och att du
           ångrar köpet. Skicka därefter tillbaka varan så snart som möjligt,

@@ -113,6 +113,16 @@ export interface Product {
    * — att flytta en bild till index 0 gör den till huvudbild.
    */
   images?: ProductImage[];
+  /**
+   * ISO-tidsstämpel för senaste ändring via adminformuläret — grunden för
+   * ett enkelt concurrency-skydd (se updateProduct i lib/data/
+   * productStore.ts): om en annan admin-session redan sparat en ändring
+   * sedan formuläret laddades, avvisas sparandet istället för att tyst
+   * skriva över den andras ändring. Saknas på äldre produkter som aldrig
+   * redigerats via formuläret sedan uppdrag 12 — de har inget att skydda
+   * mot ännu.
+   */
+  updatedAt?: string;
 }
 
 /**

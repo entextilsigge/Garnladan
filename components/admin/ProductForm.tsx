@@ -151,7 +151,12 @@ export default function ProductForm({
         ? await fetch(`/api/admin/products/${product.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            // updatedAt skickas med som "det jag hade när jag öppnade
+            // formuläret" — servern jämför mot den faktiska produktens
+            // updatedAt och avvisar sparandet (409) om någon annan admin-
+            // session redan hunnit spara en ändring sedan dess, istället för
+            // att tyst skriva över den.
+            body: JSON.stringify({ ...payload, updatedAt: product.updatedAt }),
           })
         : await fetch("/api/admin/products", {
             method: "POST",

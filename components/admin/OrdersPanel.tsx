@@ -36,6 +36,17 @@ const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
   partially_refunded: "bg-senap/15 text-senap-dark",
 };
 
+// En order som legat kvar som "pending" längre än detta är sannolikt ett
+// tecken på att webhooken missat eventet (se AUDIT.md) — flaggas visuellt
+// så packpersonalen ser den utan att behöva leta, och kan öppna
+// orderdetaljerna för att stämma av mot Stripe direkt.
+const STALE_PENDING_MS = 30 * 60 * 1000;
+
+function isStalePending(order: Order): boolean {
+  if ((order.paymentStatus ?? "paid") !== "pending") return false;
+  return Date.now() - new Date(order.createdAt).getTime() > STALE_PENDING_MS;
+}
+
 export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] }) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [query, setQuery] = useState("");
@@ -226,6 +237,14 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
                     >
                       {PAYMENT_STATUS_LABELS[paymentStatus]}
                     </span>
+                    {isStalePending(o) && (
+                      <p
+                        className="mt-1.5 max-w-[140px] text-xs font-semibold text-tegel-dark"
+                        title="Ordern har väntat på betalningsbekräftelse i över 30 minuter — webhooken kan ha missat eventet. Öppna Detaljer för att stämma av mot Stripe."
+                      >
+                        ⚠ Väntat &gt;30 min — kolla Stripe
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-3.5">
                     <select

@@ -108,25 +108,45 @@ export function createProduct(input: ProductInput): Product {
   const all = readAll();
   const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const slug = uniqueSlug(slugify(input.slug || input.name), all);
-  const product: Product = { ...input, id, slug };
+  const product: Product = { ...input, id, slug, updatedAt: new Date().toISOString() };
   writeAll([...all, product]);
   return product;
 }
 
-export function updateProduct(id: string, patch: Partial<ProductInput>): Product | null {
+export type UpdateProductResult =
+  | { ok: true; product: Product }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "conflict"; current: Product };
+
+/**
+ * `expectedUpdatedAt`, om satt, måste matcha produktens nuvarande
+ * `updatedAt` — annars avvisas sparandet med `{ok:false, reason:"conflict"}`
+ * istället för att tyst skriva över en ändring en annan admin-session redan
+ * sparat sedan formuläret laddades (se app/api/admin/products/[id]/route.ts).
+ * Produkter som aldrig haft ett `updatedAt` (skapade innan detta skydd
+ * fanns) har inget att jämföra mot och accepteras alltid.
+ */
+export function updateProduct(
+  id: string,
+  patch: Partial<ProductInput>,
+  expectedUpdatedAt?: string
+): UpdateProductResult {
   const all = readAll();
   const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return null;
+  if (idx === -1) return { ok: false, reason: "not_found" };
   const current = all[idx];
+  if (expectedUpdatedAt && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
+    return { ok: false, reason: "conflict", current };
+  }
   let slug = current.slug;
   if (patch.slug || (patch.name && patch.name !== current.name)) {
     const base = slugify(patch.slug || patch.name || current.name);
     if (base !== current.slug) slug = uniqueSlug(base, all, id);
   }
-  const updated: Product = { ...current, ...patch, id, slug };
+  const updated: Product = { ...current, ...patch, id, slug, updatedAt: new Date().toISOString() };
   all[idx] = updated;
   writeAll(all);
-  return updated;
+  return { ok: true, product: updated };
 }
 
 export function deleteProduct(id: string): boolean {
