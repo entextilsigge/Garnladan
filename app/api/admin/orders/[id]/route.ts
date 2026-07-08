@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Ogiltigt spårningsnummer." }, { status: 400 });
   }
 
-  const existing = getOrderById(params.id);
+  const existing = await getOrderById(params.id);
   if (!existing) {
     return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
   }
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
-  const updated = updateOrderFulfillment(params.id, {
+  const updated = await updateOrderFulfillment(params.id, {
     status: body.status,
     trackingNumber: "trackingNumber" in body ? nextTrackingNumber : undefined,
   });

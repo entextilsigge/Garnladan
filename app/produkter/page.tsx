@@ -30,7 +30,7 @@ export default async function ProductsPage(
   const sort = VALID_SORTS.includes(searchParams.sortering as (typeof VALID_SORTS)[number])
     ? (searchParams.sortering as (typeof VALID_SORTS)[number])
     : undefined;
-  const products = getAllProducts();
+  const products = await getAllProducts();
 
   return (
     <>

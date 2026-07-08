@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "sessionId krävs." }, { status: 400 });
   }
 
-  const session = peekSession(body.sessionId);
+  const session = await peekSession(body.sessionId);
   if (!session) {
     return NextResponse.json(
       { error: "Sessionen hittades inte eller har redan använts." },
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   // kan vi hinna dra ett kort för varor som inte längre finns, och två
   // samtidiga köp av samma sista enhet skulle kunna gå igenom. Se
   // reserveStockForItems för varför detta är race-safe.
-  const reservation = reserveStockForItems(session.items);
+  const reservation = await reserveStockForItems(session.items);
   if (!reservation.ok) {
     return NextResponse.json({ error: reservation.error }, { status: 409 });
   }
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     // tillbaka det, annars är varorna permanent låsta utan att någon order
     // någonsin skapades.
     for (const item of session.items) {
-      adjustColorwayStock(item.slug, item.colorName, item.quantity);
+      await adjustColorwayStock(item.slug, item.colorName, item.quantity);
     }
     logError(
       err instanceof Error ? err.message : "Okänt fel vid PaymentIntent-skapande",
@@ -95,8 +95,8 @@ export async function POST(request: Request) {
   }
 
   // Konsumera sessionen först nu när Stripe-anropet faktiskt lyckats.
-  consumeSession(body.sessionId);
-  createOrderFromSession(session, orderId, "pending", paymentIntent.id);
+  await consumeSession(body.sessionId);
+  await createOrderFromSession(session, orderId, "pending", paymentIntent.id);
 
   return NextResponse.json({ clientSecret: paymentIntent.client_secret, orderId });
 }

@@ -29,10 +29,15 @@ export async function GET(request: NextRequest) {
       ? granularityParam
       : "day";
 
+  const [products, orders, campaigns] = await Promise.all([
+    getAllProducts(),
+    getAllOrders(),
+    getAllCampaigns(),
+  ]);
   const result = computeAnalytics({
-    products: getAllProducts(),
-    orders: getAllOrders(),
-    campaigns: getAllCampaigns(),
+    products,
+    orders,
+    campaigns,
     range: { from, to },
     granularity,
   });

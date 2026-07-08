@@ -29,7 +29,7 @@ export default async function PacklistaPage(props: { params: Promise<{ id: strin
     );
   }
 
-  const order = getOrderById(params.id);
+  const order = await getOrderById(params.id);
   if (!order) notFound();
 
   return (

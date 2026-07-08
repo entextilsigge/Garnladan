@@ -21,9 +21,11 @@ export default async function AdminPage() {
     return <AdminLoginForm />;
   }
 
-  const products = getAllProducts();
-  const orders = getAllOrders();
-  const settings = getShippingSettings();
+  const [products, orders, settings] = await Promise.all([
+    getAllProducts(),
+    getAllOrders(),
+    getShippingSettings(),
+  ]);
 
   return (
     <AdminDashboard initialProducts={products} initialOrders={orders} initialSettings={settings} />

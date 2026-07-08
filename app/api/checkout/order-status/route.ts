@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "orderId krävs." }, { status: 400 });
   }
 
-  const order = getOrderById(orderId);
+  const order = await getOrderById(orderId);
   if (!order) {
     return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
   }

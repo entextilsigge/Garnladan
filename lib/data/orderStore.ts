@@ -1,14 +1,11 @@
-import fs from "fs";
-import path from "path";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Orderlager — JSON-fil-baserad, server-only (använder "fs").
-//
-// Samma brasklapp som lib/data/productStore.ts: fungerar utmärkt lokalt,
-// men skrivningar försvinner mellan deploys/cold starts på Vercels
-// serverless-funktioner (read-only filsystem i produktion). Byt ut
-// readAll/writeAll mot en riktig databas för produktion — app/api/admin/
-// orders/* och app/api/checkout/confirm pratar bara med funktionerna här.
+// Orderlager — Supabase Postgres (uppdrag 13; ersätter den tidigare
+// JSON-fil-baserade lagringen). Alla ordrar hanteras uteslutande server-side
+// via service-role-klienten (aldrig via anon-klienten — ordrar innehåller
+// kund-PII och har ingen publik läspolicy, se
+// supabase/migrations/0001_initial_schema.sql).
 // ---------------------------------------------------------------------------
 
 /**
@@ -25,17 +22,18 @@ export type OrderStatus = "vantar_packning" | "packad" | "skickad";
  * status). Sätts till "paid" direkt av det mockade flödet (allt lyckas),
  * eller av app/api/webhooks/stripe/route.ts när en riktig
  * payment_intent.succeeded/payment_intent.payment_failed tas emot. Ändras
- * ALDRIG manuellt i admin (utom via en lyckad återbetalning, se
- * recordRefund nedan) — Stripe (eller mock-flödet) är alltid sanningskällan.
+ * ALDRIG manuellt i admin (utom via en lyckad återbetalning) — Stripe
+ * (eller mock-flödet) är alltid sanningskällan.
  */
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
 
 /** En enskild återbetalning mot ordern — flera delåterbetalningar kan förekomma. */
 export interface OrderRefund {
   id: string;
-  /** Stripes refund-id (re_...), för spårbarhet mot Stripe Dashboard. */
-  stripeRefundId: string;
+  /** Stripes refund-id (re_...), saknas medan raden är 'pending' (se reserveRefund). */
+  stripeRefundId: string | null;
   amount: number;
+  status: "pending" | "completed" | "failed";
   createdAt: string;
 }
 
@@ -58,9 +56,7 @@ export interface OrderCustomer {
 
 /**
  * Marknadsföringsattribution, fångad från utm_source/utm_medium/utm_campaign
- * vid landning (se components/UtmCapture.tsx + lib/attribution.ts) och
- * kopplad till ordern i checkout-flödet. Default-värden ("direkt"/"okänt"/
- * "okänd") används när inga UTM-parametrar finns.
+ * vid landning och kopplad till ordern i checkout-flödet.
  */
 export interface OrderAttribution {
   source: string;
@@ -72,74 +68,173 @@ export interface Order {
   id: string;
   createdAt: string;
   status: OrderStatus;
-  /** Stripes faktiska betalstatus (eller "paid" direkt i mockat läge). */
   paymentStatus: PaymentStatus;
-  /** Stripe PaymentIntent-id — saknas i mockat läge. */
   paymentIntentId?: string;
-  /** PostNords spårningsnummer — sätts av admin när status blir "skickad". */
   trackingNumber?: string;
   customer: OrderCustomer;
   shippingMethod: string;
   shippingLabel: string;
-  /**
-   * Betalmetod. Sätts generiskt till "stripe" när PaymentIntenten skapas,
-   * men uppdateras till den faktiska metoden (t.ex. "card", "klarna") av
-   * webhooken när payment_intent.succeeded tas emot — se
-   * app/api/webhooks/stripe/route.ts.
-   */
   paymentMethod: string;
   items: OrderItem[];
   subtotal: number;
   shippingCost: number;
   total: number;
   attribution: OrderAttribution;
-  /** Logg över återbetalningar mot ordern (kan vara flera delåterbetalningar). */
   refunds?: OrderRefund[];
-  /**
-   * Nycklar (`${slug}::${colorName}`) för orderrader vars lager admin redan
-   * bekräftat är återlagt, så en rad inte råkar krediteras dubbelt om flera
-   * delåterbetalningar berör samma order. Sätts automatiskt för alla rader
-   * vid en FULL återbetalning; sätts manuellt av admin, rad för rad, vid
-   * delåterbetalning (se restockOrderItems nedan och POST .../refund).
-   */
   restockedItemKeys?: string[];
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]");
+interface OrderItemRow {
+  slug: string;
+  name: string;
+  color_name: string;
+  quantity: number;
+  unit_price: number;
 }
 
-function readAll(): Order[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+interface OrderRefundRow {
+  id: string;
+  stripe_refund_id: string | null;
+  amount: number;
+  status: "pending" | "completed" | "failed";
+  created_at: string;
+}
+
+interface OrderRow {
+  id: string;
+  created_at: string;
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  payment_intent_id: string | null;
+  tracking_number: string | null;
+  customer_first_name: string;
+  customer_last_name: string;
+  customer_email: string;
+  customer_address: string;
+  customer_postal_code: string;
+  customer_city: string;
+  shipping_method: string;
+  shipping_label: string;
+  payment_method: string;
+  subtotal: number;
+  shipping_cost: number;
+  total: number;
+  attribution_source: string;
+  attribution_medium: string;
+  attribution_campaign: string;
+  restocked_item_keys: string[];
+  order_items: OrderItemRow[];
+  order_refunds: OrderRefundRow[];
+}
+
+const ORDER_SELECT = "*, order_items(*), order_refunds(*)";
+
+function rowToOrder(row: OrderRow): Order {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    status: row.status,
+    paymentStatus: row.payment_status,
+    paymentIntentId: row.payment_intent_id ?? undefined,
+    trackingNumber: row.tracking_number ?? undefined,
+    customer: {
+      firstName: row.customer_first_name,
+      lastName: row.customer_last_name,
+      email: row.customer_email,
+      address: row.customer_address,
+      postalCode: row.customer_postal_code,
+      city: row.customer_city,
+    },
+    shippingMethod: row.shipping_method,
+    shippingLabel: row.shipping_label,
+    paymentMethod: row.payment_method,
+    items: (row.order_items ?? []).map((i) => ({
+      slug: i.slug,
+      name: i.name,
+      colorName: i.color_name,
+      quantity: i.quantity,
+      unitPrice: Number(i.unit_price),
+    })),
+    subtotal: Number(row.subtotal),
+    shippingCost: Number(row.shipping_cost),
+    total: Number(row.total),
+    attribution: {
+      source: row.attribution_source,
+      medium: row.attribution_medium,
+      campaign: row.attribution_campaign,
+    },
+    refunds: (row.order_refunds ?? []).map((r) => ({
+      id: r.id,
+      stripeRefundId: r.stripe_refund_id,
+      amount: Number(r.amount),
+      status: r.status,
+      createdAt: r.created_at,
+    })),
+    restockedItemKeys: row.restocked_item_keys ?? [],
+  };
+}
+
+export async function getAllOrders(): Promise<Order[]> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("orders")
+    .select(ORDER_SELECT)
+    .order("created_at", { ascending: false });
+  throwIfSupabaseError(error);
+  return (data as unknown as OrderRow[]).map(rowToOrder);
+}
+
+export async function getOrderById(id: string): Promise<Order | undefined> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("orders")
+    .select(ORDER_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToOrder(data as unknown as OrderRow) : undefined;
+}
+
+export async function createOrder(order: Order): Promise<Order> {
+  const client = getSupabaseServiceClient();
+  const { error: orderError } = await client.from("orders").insert({
+    id: order.id,
+    created_at: order.createdAt,
+    status: order.status,
+    payment_status: order.paymentStatus,
+    payment_intent_id: order.paymentIntentId ?? null,
+    tracking_number: order.trackingNumber ?? null,
+    customer_first_name: order.customer.firstName,
+    customer_last_name: order.customer.lastName,
+    customer_email: order.customer.email,
+    customer_address: order.customer.address,
+    customer_postal_code: order.customer.postalCode,
+    customer_city: order.customer.city,
+    shipping_method: order.shippingMethod,
+    shipping_label: order.shippingLabel,
+    payment_method: order.paymentMethod,
+    subtotal: order.subtotal,
+    shipping_cost: order.shippingCost,
+    total: order.total,
+    attribution_source: order.attribution.source,
+    attribution_medium: order.attribution.medium,
+    attribution_campaign: order.attribution.campaign,
+  });
+  throwIfSupabaseError(orderError);
+
+  if (order.items.length > 0) {
+    const { error: itemsError } = await client.from("order_items").insert(
+      order.items.map((item) => ({
+        order_id: order.id,
+        slug: item.slug,
+        name: item.name,
+        color_name: item.colorName,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+      }))
+    );
+    throwIfSupabaseError(itemsError);
   }
-}
 
-function writeAll(orders: Order[]) {
-  ensureFile();
-  fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
-}
-
-export function getAllOrders(): Order[] {
-  return readAll().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-export function getOrderById(id: string): Order | undefined {
-  return readAll().find((o) => o.id === id);
-}
-
-export function createOrder(order: Order): Order {
-  const all = readAll();
-  writeAll([...all, order]);
-  return order;
+  return (await getOrderById(order.id))!;
 }
 
 /**
@@ -147,69 +242,90 @@ export function createOrder(order: Order): Order {
  * app/api/admin/orders/[id]/route.ts kan jämföra gammal/ny status (för att
  * avgöra om skickad-mejlet ska triggas) utifrån samma atomiska skrivning.
  */
-export function updateOrderFulfillment(
+export async function updateOrderFulfillment(
   id: string,
   updates: { status?: OrderStatus; trackingNumber?: string }
-): Order | null {
-  const all = readAll();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  all[idx] = {
-    ...all[idx],
-    ...(updates.status ? { status: updates.status } : {}),
-    ...(updates.trackingNumber !== undefined ? { trackingNumber: updates.trackingNumber } : {}),
-  };
-  writeAll(all);
-  return all[idx];
+): Promise<Order | null> {
+  const patch: Record<string, unknown> = {};
+  if (updates.status) patch.status = updates.status;
+  if (updates.trackingNumber !== undefined) patch.tracking_number = updates.trackingNumber;
+
+  const { error } = await getSupabaseServiceClient().from("orders").update(patch).eq("id", id);
+  throwIfSupabaseError(error);
+  return (await getOrderById(id)) ?? null;
 }
 
-export function updatePaymentStatus(id: string, paymentStatus: PaymentStatus): Order | null {
-  const all = readAll();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  all[idx] = { ...all[idx], paymentStatus };
-  writeAll(all);
-  return all[idx];
+export async function updatePaymentStatus(id: string, paymentStatus: PaymentStatus): Promise<Order | null> {
+  const { error } = await getSupabaseServiceClient()
+    .from("orders")
+    .update({ payment_status: paymentStatus })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return (await getOrderById(id)) ?? null;
 }
 
 /** Ersätter den generiska "stripe"-etiketten med den faktiska betalmetoden (t.ex. "card", "klarna"). */
-export function updatePaymentMethod(id: string, paymentMethod: string): Order | null {
-  const all = readAll();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  all[idx] = { ...all[idx], paymentMethod };
-  writeAll(all);
-  return all[idx];
-}
-
-/**
- * Loggar en lyckad Stripe-återbetalning på ordern och sätter betalstatus
- * till "refunded" (full) eller "partially_refunded" (delbelopp) utifrån
- * totalt återbetalt belopp hittills jämfört med ordersumman. Anropas ENDAST
- * efter att stripe.refunds.create() faktiskt lyckats (se
- * app/api/admin/orders/[id]/refund/route.ts) — aldrig i förväg.
- */
-export function recordRefund(id: string, refund: OrderRefund): Order | null {
-  const all = readAll();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  const current = all[idx];
-  const refunds = [...(current.refunds ?? []), refund];
-  const totalRefunded = refunds.reduce((sum, r) => sum + r.amount, 0);
-  const paymentStatus: PaymentStatus = totalRefunded >= current.total ? "refunded" : "partially_refunded";
-  all[idx] = { ...current, refunds, paymentStatus };
-  writeAll(all);
-  return all[idx];
+export async function updatePaymentMethod(id: string, paymentMethod: string): Promise<Order | null> {
+  const { error } = await getSupabaseServiceClient()
+    .from("orders")
+    .update({ payment_method: paymentMethod })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return (await getOrderById(id)) ?? null;
 }
 
 /** Markerar orderrader (`${slug}::${colorName}`) som redan återlagda i lager, så de inte krediteras igen. */
-export function markItemsRestocked(id: string, itemKeys: string[]): Order | null {
-  const all = readAll();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  const current = all[idx];
+export async function markItemsRestocked(id: string, itemKeys: string[]): Promise<Order | null> {
+  const current = await getOrderById(id);
+  if (!current) return null;
   const restockedItemKeys = Array.from(new Set([...(current.restockedItemKeys ?? []), ...itemKeys]));
-  all[idx] = { ...current, restockedItemKeys };
-  writeAll(all);
-  return all[idx];
+  const { error } = await getSupabaseServiceClient()
+    .from("orders")
+    .update({ restocked_item_keys: restockedItemKeys })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return (await getOrderById(id)) ?? null;
+}
+
+// =============================================================================
+// ÅTERBETALNING — tvåfas, atomärt på databasnivå (uppdrag 13, ersätter det
+// tidigare in-memory-låset i lib/orderLock.ts).
+//
+// Se de tre Postgres-funktionerna i supabase/migrations/0001_initial_schema.sql
+// för den fulla motiveringen: reserve_refund låser ordern och kontrollerar
+// (och räknar redan pending + completed återbetalningar mot) återstående
+// belopp INNAN Stripe-anropet görs, så två nästan samtidiga
+// återbetalningsförsök inte kan tillsammans överstiga ordersumman —
+// oavsett hur många serverless-instanser som råkar hantera dem.
+// =============================================================================
+
+export type ReserveRefundResult = { ok: true } | { ok: false; error: string };
+
+export async function reserveRefund(orderId: string, amount: number, refundId: string): Promise<ReserveRefundResult> {
+  const { data, error } = await getSupabaseServiceClient().rpc("reserve_refund", {
+    p_order_id: orderId,
+    p_amount: amount,
+    p_refund_id: refundId,
+  });
+  throwIfSupabaseError(error);
+  return data as ReserveRefundResult;
+}
+
+export async function finalizeRefund(
+  refundId: string,
+  stripeRefundId: string
+): Promise<{ ok: true; paymentStatus: PaymentStatus } | { ok: false; error: string }> {
+  const { data, error } = await getSupabaseServiceClient().rpc("finalize_refund", {
+    p_refund_id: refundId,
+    p_stripe_refund_id: stripeRefundId,
+  });
+  throwIfSupabaseError(error);
+  return data as { ok: true; paymentStatus: PaymentStatus } | { ok: false; error: string };
+}
+
+export async function cancelRefundReservation(refundId: string): Promise<void> {
+  const { error } = await getSupabaseServiceClient().rpc("cancel_refund_reservation", {
+    p_refund_id: refundId,
+  });
+  throwIfSupabaseError(error);
 }

@@ -41,10 +41,11 @@ create table products (
   -- Product.images: [{id, url, pathname}]. Enkel array-metadata, ingen
   -- egen tabell behövs eftersom den bara läses/skrivs som en helhet.
   images jsonb not null default '[]',
-  -- Concurrency-skydd (uppdrag 12, nu på databasnivå): bumpas vid varje
-  -- UPDATE. Ett sparande som skickar en gammal version avvisas av
-  -- applikationskoden (UPDATE ... WHERE id = $1 AND version = $2).
-  version int not null default 1,
+  -- Concurrency-skydd (uppdrag 12): fungerar som versionsfält. Bumpas vid
+  -- varje UPDATE — applikationskoden avvisar ett sparande vars medskickade
+  -- updatedAt inte matchar (UPDATE ... WHERE id = $1 AND updated_at = $2),
+  -- istället för att tyst skriva över en ändring en annan admin-session
+  -- redan sparat.
   updated_at timestamptz not null default now()
 );
 

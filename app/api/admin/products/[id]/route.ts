@@ -18,7 +18,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
   const expectedUpdatedAt = typeof body.updatedAt === "string" ? body.updatedAt : undefined;
-  const result = updateProduct(params.id, body, expectedUpdatedAt);
+  const result = await updateProduct(params.id, body, expectedUpdatedAt);
   if (!result.ok) {
     if (result.reason === "conflict") {
       return NextResponse.json(
@@ -40,7 +40,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  const ok = deleteProduct(params.id);
+  const ok = await deleteProduct(params.id);
   if (!ok) {
     return NextResponse.json({ error: "Produkten hittades inte." }, { status: 404 });
   }

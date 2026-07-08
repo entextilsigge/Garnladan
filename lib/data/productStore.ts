@@ -1,78 +1,145 @@
-import fs from "fs";
-import path from "path";
-import type { Category, Product, ProductImage } from "@/lib/products";
-// Kompileringstida startdata — samma innehåll som data/products.json hade vid
-// byggtillfället. Fungerar som fallback om JSON-filen på disk saknas eller
-// inte går att tolka (t.ex. första körningen i en ny miljö).
-import PRODUCTS_SEED_JSON from "@/data/products.json";
-
-const PRODUCTS_SEED = PRODUCTS_SEED_JSON as unknown as Product[];
+import type { Category, Colorway, Product, ProductImage } from "@/lib/products";
+import { getSupabaseAnonClient, getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
-// Produktlager — JSON-fil-baserad, server-only (använder "fs").
+// Produktlager — Supabase Postgres (uppdrag 13; ersätter den tidigare
+// JSON-fil-baserade lagringen, som kraschade med EROFS på Vercels
+// skrivskyddade serverless-filsystem i produktion).
 //
-// Importera ENDAST från route handlers eller server components. Aldrig från
-// en "use client"-fil (fs finns inte i webbläsaren) — klientkod som behöver
-// produktdata (t.ex. varukorgen) ska hämta via GET /api/products istället.
+// Publika LÄSNINGAR (produktlistning, produktsida, sitemap) går via
+// anon-klienten och respekterar RLS (bara SELECT tillåtet, se
+// supabase/migrations/0001_initial_schema.sql). ALL SKRIVNING (admin-CRUD,
+// lagerjusteringar) går via service-role-klienten, som bara får anropas
+// server-side.
 //
-// OBS för produktion: på Vercels serverless-funktioner är filsystemet
-// read-only (utom katalogen /tmp, som i sin tur inte delas mellan anrop
-// eller instanser). Skrivningar nedan fungerar utmärkt lokalt (npm run dev /
-// npm start) men FÖRSVINNER vid nästa deploy eller cold start på Vercel.
-//
-// Byt ut readAll/writeAll mot en riktig databas (Postgres/Supabase/
-// PlanetScale etc.) för produktion — resten av admin-API:t (routes under
-// app/api/admin/products) pratar bara med funktionerna i den här filen och
-// behöver inte ändras.
+// Alla funktioner är nu async (nätverksanrop till Postgres istället för
+// synkrona fs-anrop) — varje anropsställe i appen har uppdaterats med
+// await i samma commit-serie.
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(PRODUCTS_FILE)) {
-    fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(PRODUCTS_SEED, null, 2));
-  }
+interface ProductVariantRow {
+  id: string;
+  name: string;
+  hex: string;
+  color_group: string;
+  stock: number;
 }
 
-function readAll(): Product[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(PRODUCTS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : PRODUCTS_SEED;
-  } catch {
-    return PRODUCTS_SEED;
-  }
+interface ProductRow {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  price: number;
+  compare_at_price: number | null;
+  cost_price: number;
+  tagline: string;
+  description: string;
+  composition: string;
+  fibers: string[];
+  weight_class: string;
+  meterage: number;
+  grams: number;
+  needle_size: string;
+  gauge: string;
+  care: string;
+  is_new: boolean;
+  popularity: number;
+  image_url: string | null;
+  images: ProductImage[];
+  version: number;
+  updated_at: string;
+  product_variants: ProductVariantRow[];
 }
 
-function writeAll(products: Product[]) {
-  ensureFile();
-  fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2));
+const PRODUCT_SELECT = "*, product_variants(*)";
+
+function rowToProduct(row: ProductRow): Product {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    category: row.category as Category,
+    price: Number(row.price),
+    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
+    costPrice: Number(row.cost_price),
+    tagline: row.tagline,
+    description: row.description,
+    composition: row.composition,
+    fibers: row.fibers as Product["fibers"],
+    weightClass: row.weight_class as Product["weightClass"],
+    meterage: row.meterage,
+    grams: row.grams,
+    needleSize: row.needle_size,
+    gauge: row.gauge,
+    care: row.care,
+    isNew: row.is_new,
+    popularity: row.popularity,
+    imageUrl: row.image_url ?? undefined,
+    images: row.images ?? [],
+    updatedAt: row.updated_at,
+    colorways: (row.product_variants ?? []).map(
+      (v): Colorway => ({
+        name: v.name,
+        hex: v.hex,
+        group: v.color_group as Colorway["group"],
+        stock: v.stock,
+      })
+    ),
+  };
 }
 
-export function getAllProducts(): Product[] {
-  return readAll();
+export async function getAllProducts(): Promise<Product[]> {
+  const { data, error } = await getSupabaseAnonClient()
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .order("popularity", { ascending: false });
+  throwIfSupabaseError(error);
+  return (data as unknown as ProductRow[]).map(rowToProduct);
 }
 
-export function getProductBySlug(slug: string): Product | undefined {
-  return readAll().find((p) => p.slug === slug);
+export async function getProductBySlug(slug: string): Promise<Product | undefined> {
+  const { data, error } = await getSupabaseAnonClient()
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("slug", slug)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToProduct(data as unknown as ProductRow) : undefined;
 }
 
-export function getProductById(id: string): Product | undefined {
-  return readAll().find((p) => p.id === id);
+export async function getProductById(id: string): Promise<Product | undefined> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToProduct(data as unknown as ProductRow) : undefined;
 }
 
-export function getProductsByCategory(category: Category): Product[] {
-  return readAll().filter((p) => p.category === category);
+export async function getProductsByCategory(category: Category): Promise<Product[]> {
+  const { data, error } = await getSupabaseAnonClient()
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("category", category)
+    .order("popularity", { ascending: false });
+  throwIfSupabaseError(error);
+  return (data as unknown as ProductRow[]).map(rowToProduct);
 }
 
-export function getNewProducts(): Product[] {
-  return readAll().filter((p) => p.isNew);
+export async function getNewProducts(): Promise<Product[]> {
+  const { data, error } = await getSupabaseAnonClient()
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("is_new", true)
+    .order("popularity", { ascending: false });
+  throwIfSupabaseError(error);
+  return (data as unknown as ProductRow[]).map(rowToProduct);
 }
 
-export function getRelatedProducts(slug: string, count = 4): Product[] {
-  const all = readAll();
+export async function getRelatedProducts(slug: string, count = 4): Promise<Product[]> {
+  const all = await getAllProducts();
   const product = all.find((p) => p.slug === slug);
   if (!product) return [];
   const sameCategory = all.filter((p) => p.slug !== slug && p.category === product.category);
@@ -93,24 +160,70 @@ function slugify(name: string): string {
   );
 }
 
-function uniqueSlug(base: string, all: Product[], excludeId?: string): string {
+async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
   let slug = base;
   let i = 2;
-  while (all.some((p) => p.slug === slug && p.id !== excludeId)) {
+  for (;;) {
+    let query = getSupabaseServiceClient().from("products").select("id").eq("slug", slug);
+    if (excludeId) query = query.neq("id", excludeId);
+    const { data, error } = await query.maybeSingle();
+    throwIfSupabaseError(error);
+    if (!data) return slug;
     slug = `${base}-${i++}`;
   }
-  return slug;
 }
 
 export type ProductInput = Omit<Product, "id" | "slug"> & { slug?: string };
 
-export function createProduct(input: ProductInput): Product {
-  const all = readAll();
-  const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const slug = uniqueSlug(slugify(input.slug || input.name), all);
-  const product: Product = { ...input, id, slug, updatedAt: new Date().toISOString() };
-  writeAll([...all, product]);
-  return product;
+function productInputToRow(input: ProductInput) {
+  return {
+    name: input.name,
+    category: input.category,
+    price: input.price,
+    compare_at_price: input.compareAtPrice ?? null,
+    cost_price: input.costPrice,
+    tagline: input.tagline,
+    description: input.description,
+    composition: input.composition,
+    fibers: input.fibers,
+    weight_class: input.weightClass,
+    meterage: input.meterage,
+    grams: input.grams,
+    needle_size: input.needleSize,
+    gauge: input.gauge,
+    care: input.care,
+    is_new: Boolean(input.isNew),
+    popularity: input.popularity,
+    image_url: input.imageUrl || null,
+  };
+}
+
+export async function createProduct(input: ProductInput): Promise<Product> {
+  const slug = await uniqueSlug(slugify(input.slug || input.name));
+  const client = getSupabaseServiceClient();
+
+  const { data: productRow, error: productError } = await client
+    .from("products")
+    .insert({ ...productInputToRow(input), slug })
+    .select()
+    .single();
+  throwIfSupabaseError(productError);
+
+  if (input.colorways.length > 0) {
+    const { error: variantsError } = await client.from("product_variants").insert(
+      input.colorways.map((c) => ({
+        product_id: productRow.id,
+        name: c.name,
+        hex: c.hex,
+        color_group: c.group,
+        stock: c.stock,
+      }))
+    );
+    throwIfSupabaseError(variantsError);
+  }
+
+  const created = await getProductById(productRow.id);
+  return created!;
 }
 
 export type UpdateProductResult =
@@ -119,53 +232,89 @@ export type UpdateProductResult =
   | { ok: false; reason: "conflict"; current: Product };
 
 /**
- * `expectedUpdatedAt`, om satt, måste matcha produktens nuvarande
- * `updatedAt` — annars avvisas sparandet med `{ok:false, reason:"conflict"}`
- * istället för att tyst skriva över en ändring en annan admin-session redan
- * sparat sedan formuläret laddades (se app/api/admin/products/[id]/route.ts).
- * Produkter som aldrig haft ett `updatedAt` (skapade innan detta skydd
- * fanns) har inget att jämföra mot och accepteras alltid.
+ * `expectedUpdatedAt`, om satt, jämförs mot produktens nuvarande version i
+ * en atomär `UPDATE ... WHERE id = $1 AND version = $2` — matchar den
+ * inte (en annan admin-session har redan sparat en ändring sedan
+ * formuläret laddades) returneras `reason: "conflict"` istället för att
+ * skriva över den andras ändring. Produkter utan tidigare updatedAt
+ * (borde inte förekomma efter migreringen, men skyddar ändå) accepteras
+ * alltid.
  */
-export function updateProduct(
+export async function updateProduct(
   id: string,
   patch: Partial<ProductInput>,
   expectedUpdatedAt?: string
-): UpdateProductResult {
-  const all = readAll();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return { ok: false, reason: "not_found" };
-  const current = all[idx];
+): Promise<UpdateProductResult> {
+  const client = getSupabaseServiceClient();
+  const current = await getProductById(id);
+  if (!current) return { ok: false, reason: "not_found" };
+
   if (expectedUpdatedAt && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
     return { ok: false, reason: "conflict", current };
   }
+
   let slug = current.slug;
   if (patch.slug || (patch.name && patch.name !== current.name)) {
     const base = slugify(patch.slug || patch.name || current.name);
-    if (base !== current.slug) slug = uniqueSlug(base, all, id);
+    if (base !== current.slug) slug = await uniqueSlug(base, id);
   }
-  const updated: Product = { ...current, ...patch, id, slug, updatedAt: new Date().toISOString() };
-  all[idx] = updated;
-  writeAll(all);
-  return { ok: true, product: updated };
+
+  const merged: ProductInput = { ...current, ...patch };
+  const row = { ...productInputToRow(merged), slug, updated_at: new Date().toISOString() };
+
+  let query = client.from("products").update(row).eq("id", id);
+  if (expectedUpdatedAt && current.updatedAt) {
+    query = query.eq("updated_at", expectedUpdatedAt);
+  }
+  const { data: updatedRows, error } = await query.select("id");
+  throwIfSupabaseError(error);
+
+  if (!updatedRows || updatedRows.length === 0) {
+    // Någon annan hann skriva mellan vår läsning ovan och denna UPDATE.
+    const latest = await getProductById(id);
+    return { ok: false, reason: "conflict", current: latest ?? current };
+  }
+
+  if (patch.colorways) {
+    // Enklast korrekta sättet att synka en hel array av varianter: ta bort
+    // alla nuvarande och infoga de nya i samma anrop-serie. Produktens id
+    // (foreign key) ändras aldrig, så existerande order-rader (som
+    // refererar till slug + färgnamn, inte variant-id) påverkas inte.
+    const { error: deleteError } = await client.from("product_variants").delete().eq("product_id", id);
+    throwIfSupabaseError(deleteError);
+    const { error: insertError } = await client.from("product_variants").insert(
+      patch.colorways.map((c) => ({
+        product_id: id,
+        name: c.name,
+        hex: c.hex,
+        color_group: c.group,
+        stock: c.stock,
+      }))
+    );
+    throwIfSupabaseError(insertError);
+  }
+
+  const updated = await getProductById(id);
+  return { ok: true, product: updated! };
 }
 
-export function deleteProduct(id: string): boolean {
-  const all = readAll();
-  const next = all.filter((p) => p.id !== id);
-  if (next.length === all.length) return false;
-  writeAll(next);
-  return true;
+export async function deleteProduct(id: string): Promise<boolean> {
+  const { error, count } = await getSupabaseServiceClient()
+    .from("products")
+    .delete({ count: "exact" })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return (count ?? 0) > 0;
 }
 
 /** Lägger till en nyuppladdad bild sist i galleriet (blir huvudbild om det är den första). */
-export function addProductImage(id: string, image: ProductImage): Product | null {
-  const all = readAll();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return null;
-  const updated: Product = { ...all[idx], images: [...(all[idx].images ?? []), image] };
-  all[idx] = updated;
-  writeAll(all);
-  return updated;
+export async function addProductImage(id: string, image: ProductImage): Promise<Product | null> {
+  const current = await getProductById(id);
+  if (!current) return null;
+  const images = [...(current.images ?? []), image];
+  const { error } = await getSupabaseServiceClient().from("products").update({ images }).eq("id", id);
+  throwIfSupabaseError(error);
+  return getProductById(id) as Promise<Product>;
 }
 
 /**
@@ -173,18 +322,34 @@ export function addProductImage(id: string, image: ProductImage): Product | null
  * huvudbild" — index 0 blir alltid huvudbild). Tar bara emot id-ordningen,
  * inte hela objekten, så anroparen inte kan smyga in manipulerade URL:er.
  */
-export function reorderProductImages(id: string, orderedIds: string[]): Product | null {
-  const all = readAll();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return null;
-  const current = all[idx].images ?? [];
-  const byId = new Map(current.map((img) => [img.id, img]));
+export async function reorderProductImages(id: string, orderedIds: string[]): Promise<Product | null> {
+  const current = await getProductById(id);
+  if (!current) return null;
+  const byId = new Map((current.images ?? []).map((img) => [img.id, img]));
   const reordered = orderedIds.map((imgId) => byId.get(imgId)).filter((img): img is ProductImage => Boolean(img));
-  if (reordered.length !== current.length) return null;
-  const updated: Product = { ...all[idx], images: reordered };
-  all[idx] = updated;
-  writeAll(all);
-  return updated;
+  if (reordered.length !== (current.images ?? []).length) return null;
+  const { error } = await getSupabaseServiceClient()
+    .from("products")
+    .update({ images: reordered })
+    .eq("id", id);
+  throwIfSupabaseError(error);
+  return getProductById(id) as Promise<Product>;
+}
+
+/** Tar bort en bildreferens ur produkten och returnerar den borttagna bilden (för Blob-radering) tillsammans med produkten. */
+export async function removeProductImage(
+  id: string,
+  imageId: string
+): Promise<{ product: Product; removed: ProductImage } | null> {
+  const current = await getProductById(id);
+  if (!current) return null;
+  const removed = (current.images ?? []).find((img) => img.id === imageId);
+  if (!removed) return null;
+  const images = (current.images ?? []).filter((img) => img.id !== imageId);
+  const { error } = await getSupabaseServiceClient().from("products").update({ images }).eq("id", id);
+  throwIfSupabaseError(error);
+  const product = await getProductById(id);
+  return { product: product!, removed };
 }
 
 /**
@@ -192,77 +357,50 @@ export function reorderProductImages(id: string, orderedIds: string[]): Product 
  * färgnamn, eftersom OrderItem inte har en direkt colorway-referens) med
  * `delta` — positivt vid återläggning efter en retur. Om slug/färg inte
  * längre finns (produkten borttagen eller färgen omdöpt) görs ingenting.
+ *
+ * Egen liten atomär operation (inte via reserve_stock-funktionen, som är
+ * till för allt-eller-inget-kontroller vid köp) — behöver bara hitta rätt
+ * rad och addera deltat, ingen "räcker lagret"-kontroll relevant här
+ * (återläggning kan aldrig göra lagret negativt).
  */
-export function adjustColorwayStock(slug: string, colorName: string, delta: number): void {
-  const all = readAll();
-  const idx = all.findIndex((p) => p.slug === slug);
-  if (idx === -1) return;
-  const product = all[idx];
-  const colorIdx = product.colorways.findIndex((c) => c.name === colorName);
-  if (colorIdx === -1) return;
-  const colorways = [...product.colorways];
-  colorways[colorIdx] = { ...colorways[colorIdx], stock: colorways[colorIdx].stock + delta };
-  all[idx] = { ...product, colorways };
-  writeAll(all);
+export async function adjustColorwayStock(slug: string, colorName: string, delta: number): Promise<void> {
+  const client = getSupabaseServiceClient();
+  const { data: product, error: productError } = await client
+    .from("products")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  throwIfSupabaseError(productError);
+  if (!product) return;
+
+  const { data: variant, error: variantError } = await client
+    .from("product_variants")
+    .select("id, stock")
+    .eq("product_id", product.id)
+    .eq("name", colorName)
+    .maybeSingle();
+  throwIfSupabaseError(variantError);
+  if (!variant) return;
+
+  const { error: updateError } = await client
+    .from("product_variants")
+    .update({ stock: variant.stock + delta })
+    .eq("id", variant.id);
+  throwIfSupabaseError(updateError);
 }
 
 /**
- * Atomär kontroll-och-minska-operation för en hel orderkorg: läser lagret
- * EN gång, kontrollerar att samtliga rader har täckning, och minskar sedan
- * samtliga i samma skrivning — allt inom en enda synkron funktion (bara
- * synkrona fs-anrop, inget `await` mellan läsning och skrivning).
- *
- * Det där är precis vad som gör den race-safe: Node.js kör JavaScript
- * entrådigt, och synkrona fs-anrop blockerar hela event-loopen tills de är
- * klara. Två requests som "samtidigt" försöker köpa den sista enheten kan
- * alltså aldrig interleava mitt i den här funktionen inom samma process —
- * den ena körs helt klart innan den andra ens börjar. (Detta håller INTE
- * över flera samtidiga serverless-instanser/processer — se filhuvudets
- * OBS om Vercel — men matchar den nivå av garanti hela JSON-fil-lagret
- * redan bygger på, och räcker gott för en enskild instans/lokal drift.)
- *
- * Allt-eller-inget: om NÅGON rad saknar täckning skrivs INGENTING, och ett
- * tydligt fel returneras så anroparen kan visa det i kassan istället för
- * att låta ordern gå igenom med negativt lager.
+ * Atomär kontroll-och-minska-operation för en hel orderkorg, via Postgres-
+ * funktionen `reserve_stock` (se supabase/migrations/0001_initial_schema.sql)
+ * — verifierar samtliga rader (med radlås, FOR UPDATE) INNAN någon
+ * skrivning görs, och antingen committar allt eller inget. Genuint atomärt
+ * på databasnivå, till skillnad från den tidigare fil-baserade lösningen
+ * som bara var race-safe inom en enskild process/instans.
  */
-export function reserveStockForItems(
+export async function reserveStockForItems(
   items: { slug: string; colorName: string; quantity: number; name?: string }[]
-): { ok: true } | { ok: false; error: string } {
-  const all = readAll();
-
-  for (const item of items) {
-    const product = all.find((p) => p.slug === item.slug);
-    const colorway = product?.colorways.find((c) => c.name === item.colorName);
-    if (!colorway || colorway.stock < item.quantity) {
-      return {
-        ok: false,
-        error: `${item.name ?? item.slug} (${item.colorName}) finns tyvärr inte i tillräckligt antal längre — lagret har ändrats sedan du lade den i varukorgen.`,
-      };
-    }
-  }
-
-  for (const item of items) {
-    const product = all.find((p) => p.slug === item.slug)!;
-    const colorway = product.colorways.find((c) => c.name === item.colorName)!;
-    colorway.stock -= item.quantity;
-  }
-  writeAll(all);
-  return { ok: true };
-}
-
-/** Tar bort en bildreferens ur produkten och returnerar den borttagna bilden (för Blob-radering) tillsammans med produkten. */
-export function removeProductImage(
-  id: string,
-  imageId: string
-): { product: Product; removed: ProductImage } | null {
-  const all = readAll();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx === -1) return null;
-  const current = all[idx].images ?? [];
-  const removed = current.find((img) => img.id === imageId);
-  if (!removed) return null;
-  const updated: Product = { ...all[idx], images: current.filter((img) => img.id !== imageId) };
-  all[idx] = updated;
-  writeAll(all);
-  return { product: updated, removed };
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data, error } = await getSupabaseServiceClient().rpc("reserve_stock", { items });
+  throwIfSupabaseError(error);
+  return data as { ok: true } | { ok: false; error: string };
 }

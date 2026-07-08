@@ -3,7 +3,7 @@ import Link from "next/link";
 import Newsletter from "@/components/Newsletter";
 import ProductCard from "@/components/ProductCard";
 import YarnImage from "@/components/YarnImage";
-import { getAllProducts, getNewProducts, getProductBySlug } from "@/lib/data/productStore";
+import { getAllProducts, getNewProducts } from "@/lib/data/productStore";
 import {
   CATEGORY_DESCRIPTIONS,
   CATEGORY_LABELS,
@@ -39,10 +39,11 @@ const CATEGORY_SKEINS: Record<Category, { slug: string; colorIndex: number }> = 
   premium: { slug: "kashmirdrom", colorIndex: 1 },
 };
 
-export default function HomePage() {
-  const allProducts = getAllProducts();
-  const newProducts = getNewProducts().slice(0, 4);
+export default async function HomePage() {
+  const [allProducts, newProductsAll] = await Promise.all([getAllProducts(), getNewProducts()]);
+  const newProducts = newProductsAll.slice(0, 4);
   const popular = [...allProducts].sort((a, b) => b.popularity - a.popularity).slice(0, 4);
+  const bySlug = new Map(allProducts.map((p) => [p.slug, p]));
 
   return (
     <>
@@ -82,7 +83,7 @@ export default function HomePage() {
           </div>
           <div className="relative mx-auto grid w-full max-w-lg grid-cols-4 gap-3 lg:max-w-none">
             {HERO_SKEINS.map(({ slug, colorIndex, className }, i) => {
-              const product = getProductBySlug(slug)!;
+              const product = bySlug.get(slug)!;
               const colorway = product.colorways[colorIndex] ?? product.colorways[0];
               return (
                 <Link
@@ -125,7 +126,7 @@ export default function HomePage() {
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {CATEGORIES.map((cat) => {
             const skein = CATEGORY_SKEINS[cat];
-            const product = getProductBySlug(skein.slug)!;
+            const product = bySlug.get(skein.slug)!;
             const colorway = product.colorways[skein.colorIndex] ?? product.colorways[0];
             return (
               <Link

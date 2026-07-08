@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
 
-  const product = getProductById(params.id);
+  const product = await getProductById(params.id);
   if (!product) {
     return NextResponse.json({ error: "Produkten hittades inte." }, { status: 404 });
   }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   });
 
   const image: ProductImage = { id: imageId, url: blob.url, pathname: blob.pathname };
-  const updated = addProductImage(params.id, image);
+  const updated = await addProductImage(params.id, image);
   if (!updated) {
     return NextResponse.json({ error: "Produkten hittades inte." }, { status: 404 });
   }
@@ -84,7 +84,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Ogiltig ordning." }, { status: 400 });
   }
 
-  const updated = reorderProductImages(params.id, body.order);
+  const updated = await reorderProductImages(params.id, body.order);
   if (!updated) {
     return NextResponse.json({ error: "Kunde inte ändra bildordningen." }, { status: 400 });
   }

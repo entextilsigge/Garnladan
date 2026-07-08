@@ -1,20 +1,14 @@
-import fs from "fs";
-import path from "path";
 import type { PaymentMethod, ShippingDetails } from "@/lib/checkout";
 import type { OrderAttribution } from "@/lib/data/orderStore";
+import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
 // Kortlivad mellanlagring mellan POST /api/checkout/session och POST
-// /api/checkout/confirm — motsvarar hur Stripe/Klarna redan håller reda på
-// en sessions innehåll internt mellan "create" och "confirm"/webhook. Detta
-// gör att /api/checkout/confirm kan slutföra en order (för admin-vyn) utan
-// att behöva räkna om priset — själva prisberäkningslogiken i
-// app/api/checkout/session/route.ts rörs inte.
-//
-// Samma Vercel-brasklapp som övriga JSON-lager i den här mappen: en session
-// som skapas och sedan konsumeras inom samma request-cykel fungerar alltid,
-// men lagret som helhet bör ersättas av en riktig databas (eller Stripes/
-// Klarnas egen sessionshantering) i produktion.
+// /api/checkout/confirm (eller .../payment-intent) — Supabase Postgres
+// (uppdrag 13, AKUT prioritet). Detta var lagret som faktiskt kraschade i
+// produktion: Vercels serverless-funktioner har ett skrivskyddat
+// filsystem, så fs.writeFileSync i den tidigare JSON-fil-baserade
+// versionen kastade EROFS för varje enda checkout-försök.
 // ---------------------------------------------------------------------------
 
 export interface PendingSessionItem {
@@ -37,32 +31,45 @@ export interface PendingSession {
   attribution: OrderAttribution;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const SESSIONS_FILE = path.join(DATA_DIR, "checkoutSessions.json");
-
-function ensureFile() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(SESSIONS_FILE)) fs.writeFileSync(SESSIONS_FILE, "[]");
+interface CheckoutSessionRow {
+  session_id: string;
+  created_at: string;
+  items: PendingSessionItem[];
+  shipping: ShippingDetails;
+  payment_method: PaymentMethod;
+  subtotal: number;
+  shipping_cost: number;
+  amount: number;
+  attribution: OrderAttribution;
 }
 
-function readAll(): PendingSession[] {
-  ensureFile();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf-8"));
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function rowToSession(row: CheckoutSessionRow): PendingSession {
+  return {
+    sessionId: row.session_id,
+    createdAt: row.created_at,
+    items: row.items,
+    shipping: row.shipping,
+    paymentMethod: row.payment_method,
+    subtotal: Number(row.subtotal),
+    shippingCost: Number(row.shipping_cost),
+    amount: Number(row.amount),
+    attribution: row.attribution,
+  };
 }
 
-function writeAll(sessions: PendingSession[]) {
-  ensureFile();
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
-
-export function saveSession(session: PendingSession) {
-  const all = readAll();
-  writeAll([...all, session]);
+export async function saveSession(session: PendingSession): Promise<void> {
+  const { error } = await getSupabaseServiceClient().from("checkout_sessions").insert({
+    session_id: session.sessionId,
+    created_at: session.createdAt,
+    items: session.items,
+    shipping: session.shipping,
+    payment_method: session.paymentMethod,
+    subtotal: session.subtotal,
+    shipping_cost: session.shippingCost,
+    amount: session.amount,
+    attribution: session.attribution,
+  });
+  throwIfSupabaseError(error);
 }
 
 /**
@@ -73,16 +80,24 @@ export function saveSession(session: PendingSession) {
  * nätverksfel). Sessionen konsumeras (tas bort) bara efter att
  * PaymentIntenten faktiskt skapats.
  */
-export function peekSession(sessionId: string): PendingSession | null {
-  return readAll().find((s) => s.sessionId === sessionId) ?? null;
+export async function peekSession(sessionId: string): Promise<PendingSession | null> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("checkout_sessions")
+    .select("*")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToSession(data as unknown as CheckoutSessionRow) : null;
 }
 
 /** Hämtar och tar samtidigt bort sessionen (kan bara konsumeras en gång). */
-export function consumeSession(sessionId: string): PendingSession | null {
-  const all = readAll();
-  const idx = all.findIndex((s) => s.sessionId === sessionId);
-  if (idx === -1) return null;
-  const [session] = all.splice(idx, 1);
-  writeAll(all);
-  return session;
+export async function consumeSession(sessionId: string): Promise<PendingSession | null> {
+  const { data, error } = await getSupabaseServiceClient()
+    .from("checkout_sessions")
+    .delete()
+    .eq("session_id", sessionId)
+    .select("*")
+    .maybeSingle();
+  throwIfSupabaseError(error);
+  return data ? rowToSession(data as unknown as CheckoutSessionRow) : null;
 }

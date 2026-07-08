@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "Ogiltiga orderrader." }, { status: 400 });
   }
 
-  const order = getOrderById(params.id);
+  const order = await getOrderById(params.id);
   if (!order) {
     return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
   }
@@ -42,9 +42,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   }
 
   for (const item of matches) {
-    adjustColorwayStock(item.slug, item.colorName, item.quantity);
+    await adjustColorwayStock(item.slug, item.colorName, item.quantity);
   }
-  const updated = markItemsRestocked(
+  const updated = await markItemsRestocked(
     params.id,
     matches.map((item) => itemKey(item.slug, item.colorName))
   );

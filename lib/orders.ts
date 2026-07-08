@@ -20,12 +20,12 @@ export function generateOrderId(): string {
   return `GL-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
-export function createOrderFromSession(
+export async function createOrderFromSession(
   session: PendingSession,
   orderId: string,
   paymentStatus: PaymentStatus,
   paymentIntentId?: string
-): Order {
+): Promise<Order> {
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.id === session.shipping.shippingMethod);
 
   const order: Order = {
@@ -55,6 +55,7 @@ export function createOrderFromSession(
   return createOrder(order);
 }
 
+
 /**
  * Applicerar utfallet av en PaymentIntent (från webhooken ELLER från
  * admins manuella avstämningsknapp, se app/api/admin/orders/[id]/
@@ -73,17 +74,17 @@ export async function applyPaymentIntentOutcome(
   outcome: "paid" | "failed",
   paymentIntentId: string
 ): Promise<{ changed: boolean; order: Order | null }> {
-  const current = getOrderById(orderId);
+  const current = await getOrderById(orderId);
   if (!current || current.paymentStatus !== "pending") {
     return { changed: false, order: current ?? null };
   }
 
-  const updated = updatePaymentStatus(orderId, outcome);
+  const updated = await updatePaymentStatus(orderId, outcome);
   if (!updated) return { changed: false, order: null };
 
   if (outcome === "paid") {
     const method = await resolveActualPaymentMethod(paymentIntentId);
-    const withMethod = method ? updatePaymentMethod(orderId, method) ?? updated : updated;
+    const withMethod = method ? (await updatePaymentMethod(orderId, method)) ?? updated : updated;
     await sendOrderConfirmationEmail(withMethod);
     return { changed: true, order: withMethod };
   }

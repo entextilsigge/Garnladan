@@ -6,5 +6,5 @@ export async function GET(request: NextRequest) {
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  return NextResponse.json({ orders: getAllOrders() });
+  return NextResponse.json({ orders: await getAllOrders() });
 }

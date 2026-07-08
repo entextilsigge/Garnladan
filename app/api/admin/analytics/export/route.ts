@@ -25,9 +25,10 @@ export async function GET(request: NextRequest) {
   const fromTime = new Date(`${from}T00:00:00.000Z`).getTime();
   const toTime = new Date(`${to}T23:59:59.999Z`).getTime();
 
-  const products = getAllProducts();
+  const products = await getAllProducts();
   const productBySlug = new Map(products.map((p) => [p.slug, p]));
-  const orders = getAllOrders().filter((o) => {
+  const allOrders = await getAllOrders();
+  const orders = allOrders.filter((o) => {
     const t = new Date(o.createdAt).getTime();
     return t >= fromTime && t <= toTime;
   });

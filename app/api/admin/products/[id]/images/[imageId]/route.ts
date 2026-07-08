@@ -12,7 +12,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
 
-  const result = removeProductImage(params.id, params.imageId);
+  const result = await removeProductImage(params.id, params.imageId);
   if (!result) {
     return NextResponse.json({ error: "Bilden hittades inte." }, { status: 404 });
   }

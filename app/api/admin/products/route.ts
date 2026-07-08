@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   if (!isAuthorizedRequest(request)) {
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
-  return NextResponse.json({ products: getAllProducts() });
+  return NextResponse.json({ products: await getAllProducts() });
 }
 
 export async function POST(request: NextRequest) {
@@ -19,6 +19,6 @@ export async function POST(request: NextRequest) {
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
-  const product = createProduct(body as ProductInput);
+  const product = await createProduct(body as ProductInput);
   return NextResponse.json({ product }, { status: 201 });
 }

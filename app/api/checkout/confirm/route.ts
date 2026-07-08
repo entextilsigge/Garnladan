@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   // Icke-destruktiv läsning innan lagret kontrolleras — sessionen konsumeras
   // (tas bort) bara om vi faktiskt går vidare, se samma resonemang i
   // app/api/checkout/payment-intent/route.ts.
-  const session = peekSession(body.sessionId);
+  const session = await peekSession(body.sessionId);
   if (!session) {
     return NextResponse.json(
       { error: "Sessionen hittades inte eller har redan använts." },
@@ -42,18 +42,18 @@ export async function POST(request: Request) {
   // Kontrollera och minska lagret ATOMÄRT innan ordern slutförs — annars
   // kan två samtidiga köp av samma sista enhet båda lyckas. Se
   // reserveStockForItems för varför detta är race-safe.
-  const reservation = reserveStockForItems(session.items);
+  const reservation = await reserveStockForItems(session.items);
   if (!reservation.ok) {
     return NextResponse.json({ error: reservation.error }, { status: 409 });
   }
 
-  consumeSession(body.sessionId);
+  await consumeSession(body.sessionId);
 
   // Simulera kort handläggningstid hos betalleverantören
   await new Promise((resolve) => setTimeout(resolve, 900));
 
   const orderId = generateOrderId();
-  const order = createOrderFromSession(session, orderId, "paid");
+  const order = await createOrderFromSession(session, orderId, "paid");
 
   await sendOrderConfirmationEmail(order);
 

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     );
   }
 
-  const order = getOrderById(params.id);
+  const order = await getOrderById(params.id);
   if (!order) {
     return NextResponse.json({ error: "Ordern hittades inte." }, { status: 404 });
   }

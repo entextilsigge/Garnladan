@@ -15,7 +15,7 @@ export const contentType = "image/png";
 
 export default async function Image(props: { params: Promise<{ slug: string }> }) {
   const { slug } = await props.params;
-  const product = getProductBySlug(slug);
+  const product = await getProductBySlug(slug);
 
   if (!product) {
     return new ImageResponse(

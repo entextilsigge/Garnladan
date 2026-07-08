@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   }[] = [];
 
   for (const line of body.lines) {
-    const product = getProductBySlug(line.slug);
+    const product = await getProductBySlug(line.slug);
     if (
       !product ||
       typeof line.quantity !== "number" ||
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const shippingCost = calculateShippingCost(subtotal, shippingOption.id, getShippingSettings());
+  const shippingCost = calculateShippingCost(subtotal, shippingOption.id, await getShippingSettings());
   const amount = subtotal + shippingCost;
 
   const sessionId = `mock_sess_${crypto.randomUUID()}`;
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
   // en sessions innehåll internt. Trimmade strängar, inte råa fält, sparas
   // — extra egenskaper i body.shipping som klienten skickat med följer inte
   // med.
-  saveSession({
+  await saveSession({
     sessionId,
     createdAt: new Date().toISOString(),
     items: resolvedItems,

@@ -14,7 +14,7 @@ export async function generateMetadata(
   }
 ): Promise<Metadata> {
   const params = await props.params;
-  const product = getProductBySlug(params.slug);
+  const product = await getProductBySlug(params.slug);
   if (!product) return { title: "Produkten hittades inte" };
   const title = `${product.name} — ${CATEGORY_LABELS[product.category]}`;
   const description = `${product.tagline}. ${product.composition}, ${product.meterage} m / ${product.grams} g, rek. sticka ${product.needleSize}. Köp hos Garnladan — fri frakt över 499 kr.`;
@@ -36,10 +36,10 @@ export async function generateMetadata(
 
 export default async function ProductPage(props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
-  const product = getProductBySlug(params.slug);
+  const product = await getProductBySlug(params.slug);
   if (!product) notFound();
 
-  const related = getRelatedProducts(params.slug);
+  const related = await getRelatedProducts(params.slug);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">

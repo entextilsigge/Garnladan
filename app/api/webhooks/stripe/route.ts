@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       const orderId = paymentIntent.metadata?.orderId;
 
-      if (orderId && getOrderById(orderId)) {
+      if (orderId && (await getOrderById(orderId))) {
         const outcome = event.type === "payment_intent.succeeded" ? "paid" : "failed";
         // applyPaymentIntentOutcome är själv idempotent (no-op om ordern
         // redan lämnat "pending") — skyddar mot att webhooken och admins
