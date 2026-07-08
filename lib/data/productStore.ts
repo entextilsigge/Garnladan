@@ -23,6 +23,7 @@ interface ProductVariantRow {
   hex: string;
   color_group: string;
   stock: number;
+  position: number;
 }
 
 interface ProductRow {
@@ -47,12 +48,18 @@ interface ProductRow {
   popularity: number;
   image_url: string | null;
   images: ProductImage[];
-  version: number;
   updated_at: string;
   product_variants: ProductVariantRow[];
 }
 
 const PRODUCT_SELECT = "*, product_variants(*)";
+// Sorterar den nästlade product_variants-relationen efter position vid
+// varje SELECT nedan — annars returnerar PostgREST dem i en odefinierad
+// ordning, vilket skulle få färgprickarna på produktsidan att byta plats
+// efter varje redigering (varianter tas bort och läggs till på nytt vid
+// uppdatering, se updateProduct nedan).
+const VARIANTS_ORDER_COLUMN = "position";
+const VARIANTS_ORDER_OPTS = { foreignTable: "product_variants" };
 
 function rowToProduct(row: ProductRow): Product {
   return {
@@ -93,7 +100,8 @@ export async function getAllProducts(): Promise<Product[]> {
   const { data, error } = await getSupabaseAnonClient()
     .from("products")
     .select(PRODUCT_SELECT)
-    .order("popularity", { ascending: false });
+    .order("popularity", { ascending: false })
+    .order(VARIANTS_ORDER_COLUMN, VARIANTS_ORDER_OPTS);
   throwIfSupabaseError(error);
   return (data as unknown as ProductRow[]).map(rowToProduct);
 }
@@ -103,6 +111,7 @@ export async function getProductBySlug(slug: string): Promise<Product | undefine
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("slug", slug)
+    .order(VARIANTS_ORDER_COLUMN, VARIANTS_ORDER_OPTS)
     .maybeSingle();
   throwIfSupabaseError(error);
   return data ? rowToProduct(data as unknown as ProductRow) : undefined;
@@ -113,6 +122,7 @@ export async function getProductById(id: string): Promise<Product | undefined> {
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("id", id)
+    .order(VARIANTS_ORDER_COLUMN, VARIANTS_ORDER_OPTS)
     .maybeSingle();
   throwIfSupabaseError(error);
   return data ? rowToProduct(data as unknown as ProductRow) : undefined;
@@ -123,7 +133,8 @@ export async function getProductsByCategory(category: Category): Promise<Product
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("category", category)
-    .order("popularity", { ascending: false });
+    .order("popularity", { ascending: false })
+    .order(VARIANTS_ORDER_COLUMN, VARIANTS_ORDER_OPTS);
   throwIfSupabaseError(error);
   return (data as unknown as ProductRow[]).map(rowToProduct);
 }
@@ -133,7 +144,8 @@ export async function getNewProducts(): Promise<Product[]> {
     .from("products")
     .select(PRODUCT_SELECT)
     .eq("is_new", true)
-    .order("popularity", { ascending: false });
+    .order("popularity", { ascending: false })
+    .order(VARIANTS_ORDER_COLUMN, VARIANTS_ORDER_OPTS);
   throwIfSupabaseError(error);
   return (data as unknown as ProductRow[]).map(rowToProduct);
 }
@@ -211,12 +223,13 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 
   if (input.colorways.length > 0) {
     const { error: variantsError } = await client.from("product_variants").insert(
-      input.colorways.map((c) => ({
+      input.colorways.map((c, i) => ({
         product_id: productRow.id,
         name: c.name,
         hex: c.hex,
         color_group: c.group,
         stock: c.stock,
+        position: i,
       }))
     );
     throwIfSupabaseError(variantsError);
@@ -283,12 +296,13 @@ export async function updateProduct(
     const { error: deleteError } = await client.from("product_variants").delete().eq("product_id", id);
     throwIfSupabaseError(deleteError);
     const { error: insertError } = await client.from("product_variants").insert(
-      patch.colorways.map((c) => ({
+      patch.colorways.map((c, i) => ({
         product_id: id,
         name: c.name,
         hex: c.hex,
         color_group: c.group,
         stock: c.stock,
+        position: i,
       }))
     );
     throwIfSupabaseError(insertError);
