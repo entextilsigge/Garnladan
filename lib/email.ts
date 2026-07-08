@@ -1,5 +1,5 @@
 import type { Order } from "@/lib/data/orderStore";
-import { calculateVatAmount } from "@/lib/format";
+import { calculateVatAmount, formatPrice } from "@/lib/format";
 import { SITE_URL } from "@/lib/seo";
 import { escapeHtml } from "@/lib/sanitize";
 
@@ -71,10 +71,10 @@ function buildOrderEmailHtml(order: Order): string {
       <p>Ordernummer <strong>${order.id}</strong>. Vi packar din beställning inom 24 timmar.</p>
       <table style="border-collapse:collapse;margin-top:16px">${rows}</table>
       <table style="border-collapse:collapse;margin-top:16px;width:100%;max-width:320px">
-        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Delsumma</td><td style="padding:2px 0;text-align:right">${order.subtotal} kr</td></tr>
-        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Frakt (${order.shippingLabel})</td><td style="padding:2px 0;text-align:right">${order.shippingCost} kr</td></tr>
-        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Varav moms (25%)</td><td style="padding:2px 0;text-align:right">${vatAmount} kr</td></tr>
-        <tr><td style="padding:8px 12px 0 0;font-weight:bold">Totalt (inkl. moms)</td><td style="padding:8px 0 0;text-align:right;font-weight:bold">${order.total} kr</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Delsumma</td><td style="padding:2px 0;text-align:right">${formatPrice(order.subtotal)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Frakt (${order.shippingLabel})</td><td style="padding:2px 0;text-align:right">${formatPrice(order.shippingCost)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Varav moms (25%)</td><td style="padding:2px 0;text-align:right">${formatPrice(vatAmount)}</td></tr>
+        <tr><td style="padding:8px 12px 0 0;font-weight:bold">Totalt (inkl. moms)</td><td style="padding:8px 0 0;text-align:right;font-weight:bold">${formatPrice(order.total)}</td></tr>
       </table>
       <p style="margin-top:20px;font-size:13px">
         Ångrat dig? Du har 14 dagars ångerrätt —
@@ -134,7 +134,7 @@ function buildRefundEmailHtml(order: Order, amount: number): string {
   return `
     <div style="font-family:sans-serif;color:#241C14">
       <h1 style="font-size:20px">Din återbetalning är genomförd</h1>
-      <p>Hej ${escapeHtml(order.customer.firstName)}, vi har återbetalat ${amount} kr för beställning <strong>${order.id}</strong>.</p>
+      <p>Hej ${escapeHtml(order.customer.firstName)}, vi har återbetalat ${formatPrice(amount)} för beställning <strong>${order.id}</strong>.</p>
       <p style="margin-top:12px">
         ${isFullRefund
           ? "Hela ordersumman är nu återbetald."

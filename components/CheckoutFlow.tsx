@@ -376,7 +376,7 @@ export default function CheckoutFlow() {
                 Välj betalsätt
               </h2>
               <p className="mt-1 text-sm text-mull">
-                Demo­läge: ingen riktig betalning genomförs.
+                Demoläge: ingen riktig betalning genomförs.
               </p>
               <div className="mt-5 space-y-3">
                 <label

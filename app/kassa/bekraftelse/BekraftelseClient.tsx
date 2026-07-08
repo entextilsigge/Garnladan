@@ -58,18 +58,45 @@ export default function BekraftelseClient() {
   useEffect(() => {
     if (!orderId) return;
     let cancelled = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    fetch(`/api/checkout/order-status?orderId=${encodeURIComponent(orderId)}`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => {
-        if (!cancelled) setPaymentStatus(data.paymentStatus);
-      })
-      .catch(() => {
-        if (!cancelled) setStatusError(true);
-      });
+    // Webhooken (sanningskällan för betalstatus) kan dröja någon sekund, eller
+    // längre om Stripe har tillfälliga leveransproblem — en enstaka hämtning
+    // räcker inte, annars fastnar kunden på "väntar på bekräftelse" även när
+    // betalningen redan gått igenom. Pollar var 2:a sekund i upp till en
+    // minut, och stannar direkt så fort statusen blir "paid"/"failed" (eller
+    // sidan stängs).
+    const MAX_ATTEMPTS = 30;
+    const POLL_INTERVAL_MS = 2000;
+
+    function poll() {
+      fetch(`/api/checkout/order-status?orderId=${encodeURIComponent(orderId!)}`)
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => {
+          if (cancelled) return;
+          setPaymentStatus(data.paymentStatus);
+          setStatusError(false);
+          attempt += 1;
+          if (data.paymentStatus === "pending" && attempt < MAX_ATTEMPTS) {
+            timer = setTimeout(poll, POLL_INTERVAL_MS);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setStatusError(true);
+          attempt += 1;
+          if (attempt < MAX_ATTEMPTS) {
+            timer = setTimeout(poll, POLL_INTERVAL_MS);
+          }
+        });
+    }
+
+    poll();
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [orderId]);
 

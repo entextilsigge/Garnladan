@@ -86,13 +86,10 @@ export async function POST(request: Request) {
       err instanceof Error ? err.message : "Okänt fel vid PaymentIntent-skapande",
       "checkout/payment-intent"
     );
+    // Visa aldrig Stripes råa felmeddelande för kunden — det kan innehålla
+    // interna detaljer. Fullständigt fel finns i felloggen (logError ovan).
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Kunde inte skapa betalningen hos Stripe. Försök igen.",
-      },
+      { error: "Kunde inte skapa betalningen hos Stripe. Försök igen." },
       { status: 502 }
     );
   }

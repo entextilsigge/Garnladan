@@ -31,8 +31,17 @@ export async function POST(request: NextRequest) {
 
   clearLoginAttempts(ip);
 
+  const token = computeSessionToken();
+  if (!token) {
+    // Kan bara hända om ADMIN_PASSWORD försvann mellan isCorrectPassword-
+    // kollen ovan och den här raden (t.ex. miljövariabeln togs bort mitt i
+    // en request) — extremt osannolikt, men hellre ett tydligt fel än en
+    // trasig session-cookie.
+    return NextResponse.json({ error: "Serverfel vid inloggning. Försök igen." }, { status: 500 });
+  }
+
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(ADMIN_COOKIE_NAME, computeSessionToken(), {
+  response.cookies.set(ADMIN_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

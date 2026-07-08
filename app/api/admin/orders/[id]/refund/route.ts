@@ -84,13 +84,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       err instanceof Error ? err.message : "Okänt fel vid återbetalning",
       `admin/orders/${params.id}/refund`
     );
+    // Visa aldrig Stripes råa felmeddelande i admin — fullständigt fel finns
+    // i felloggen (logError ovan) om det behöver felsökas.
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Återbetalningen misslyckades hos Stripe.",
-      },
+      { error: "Återbetalningen misslyckades hos Stripe. Försök igen eller kontrollera i Stripe Dashboard." },
       { status: 502 }
     );
   }

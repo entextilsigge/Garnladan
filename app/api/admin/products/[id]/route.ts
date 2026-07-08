@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedRequest } from "@/lib/adminAuth";
 import { deleteProduct, updateProduct } from "@/lib/data/productStore";
+import { validateProductInput } from "@/lib/validation";
 
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -8,8 +9,13 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     return NextResponse.json({ error: "Ej inloggad." }, { status: 401 });
   }
   const body = await request.json().catch(() => null);
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Ogiltig produktdata." }, { status: 400 });
+  // Samma validering som skapande (POST) — tidigare kunde en redigering
+  // spara en trasig produkt (t.ex. tom colorways-array eller ett pris som
+  // blivit en sträng) helt förbi kontrollerna nedan, eftersom PUT aldrig
+  // validerade indata alls.
+  const validationError = validateProductInput(body);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
   }
   const updated = updateProduct(params.id, body);
   if (!updated) {

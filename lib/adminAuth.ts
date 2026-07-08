@@ -63,28 +63,55 @@ export function clearLoginAttempts(ip: string): void {
   loginAttemptsByIp.delete(ip);
 }
 
-function getConfiguredPassword(): string {
+let loggedMissingPasswordWarning = false;
+
+/**
+ * I produktion: returnerar null om ADMIN_PASSWORD saknas — det ska INTE
+ * finnas någon inloggningsbar väg in i adminpanelen då. Tidigare föll koden
+ * tillbaka på dev-lösenordet "garn" oavsett NODE_ENV, och varningen som
+ * skulle avslöja det var (av misstag) bara påslagen utanför produktion — så
+ * en glömd miljövariabel vid en Vercel-deploy hade tyst skyddat
+ * orderhistorik, kunders PII och återbetalningsknappen med ett känt,
+ * hårdkodat lösenord utan att något syntes i loggarna.
+ */
+function getConfiguredPassword(): string | null {
   const fromEnv = process.env.ADMIN_PASSWORD?.trim();
   if (fromEnv) return fromEnv;
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "production") {
+    if (!loggedMissingPasswordWarning) {
+      console.error(
+        "[admin] ADMIN_PASSWORD saknas i produktion — admininloggning är avstängd tills variabeln sätts i Vercels miljövariabler."
+      );
+      loggedMissingPasswordWarning = true;
+    }
+    return null;
+  }
+  if (!loggedMissingPasswordWarning) {
     console.warn(
       '[admin] ADMIN_PASSWORD är inte satt — använder dev-lösenordet "garn". Sätt ADMIN_PASSWORD i .env.local (och i Vercel) innan produktion.'
     );
+    loggedMissingPasswordWarning = true;
   }
   return FALLBACK_DEV_PASSWORD;
 }
 
 export function isCorrectPassword(candidate: string): boolean {
-  return candidate === getConfiguredPassword();
+  const configured = getConfiguredPassword();
+  if (!configured) return false;
+  return candidate === configured;
 }
 
-export function computeSessionToken(): string {
-  return crypto.createHash("sha256").update(`${getConfiguredPassword()}:${SALT}`).digest("hex");
+export function computeSessionToken(): string | null {
+  const configured = getConfiguredPassword();
+  if (!configured) return null;
+  return crypto.createHash("sha256").update(`${configured}:${SALT}`).digest("hex");
 }
 
 export function isValidSessionToken(token: string | undefined | null): boolean {
   if (!token) return false;
-  return token === computeSessionToken();
+  const expected = computeSessionToken();
+  if (!expected) return false;
+  return token === expected;
 }
 
 /** Kollar adminsessionen på ett inkommande Route Handler-request. */

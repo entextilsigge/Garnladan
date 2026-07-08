@@ -141,7 +141,11 @@ export async function createCheckoutSession(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    throw new Error("Kunde inte starta betalningen. Försök igen.");
+    // Servern ger ofta ett specifikt, användbart felmeddelande (t.ex. att en
+    // vara tagit slut i lager eller att adressen är ogiltig) — visa det
+    // istället för ett generiskt fel som gömmer varför köpet inte gick igenom.
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || "Kunde inte starta betalningen. Försök igen.");
   }
   return res.json();
 }
@@ -159,7 +163,10 @@ export async function confirmPayment(
     body: JSON.stringify({ sessionId }),
   });
   if (!res.ok) {
-    throw new Error("Betalningen kunde inte bekräftas. Försök igen.");
+    // Se createCheckoutSession ovan — visa serverns specifika felmeddelande
+    // (t.ex. att lagret tagit slut sedan varan lades i korgen) om det finns.
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || "Betalningen kunde inte bekräftas. Försök igen.");
   }
   return res.json();
 }
