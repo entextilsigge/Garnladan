@@ -19,3 +19,12 @@ export const VAT_RATE = 0.25;
 export function calculateVatAmount(grossAmount: number): number {
   return Math.round(grossAmount - grossAmount / (1 + VAT_RATE));
 }
+
+/**
+ * Fullständigt utskrivet köpdatum (t.ex. "8 juli 2026") — krävs för att
+ * bekräftelsemejlet/-sidan ska duga som kvitto (uppdrag 14). Samma format
+ * som redan användes på packsedeln (app/admin/packlista/[id]/page.tsx).
+ */
+export function formatOrderDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("sv-SE", { dateStyle: "long" });
+}

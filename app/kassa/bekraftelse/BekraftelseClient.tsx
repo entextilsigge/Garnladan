@@ -17,7 +17,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart";
-import { formatPrice, calculateVatAmount } from "@/lib/format";
+import { formatPrice, calculateVatAmount, formatOrderDate } from "@/lib/format";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 interface StoredOrder {
   orderId: string;
@@ -25,7 +26,8 @@ interface StoredOrder {
   email: string;
   firstName: string;
   shippingLabel: string;
-  items: { name: string; color: string; quantity: number }[];
+  createdAt: string;
+  items: { name: string; color: string; quantity: number; price: number }[];
 }
 
 type PaymentStatus = "pending" | "paid" | "failed";
@@ -193,7 +195,8 @@ export default function BekraftelseClient() {
               beställning är mottagen!
             </h1>
             <p className="mt-4 text-mull">
-              Ordernummer <strong className="font-semibold text-kol">{orderId}</strong>.{" "}
+              Ordernummer <strong className="font-semibold text-kol">{orderId}</strong>
+              {stored?.createdAt && <> · {formatOrderDate(stored.createdAt)}</>}.{" "}
               {isPending
                 ? "Vi väntar på bekräftelse från betalleverantören — det brukar bara ta någon sekund."
                 : stored?.email
@@ -219,7 +222,12 @@ export default function BekraftelseClient() {
                         {item.name}
                         <span className="text-mull"> · {item.color}</span>
                       </span>
-                      <span className="shrink-0 font-medium text-kol">{item.quantity} st</span>
+                      <span className="shrink-0 text-right font-medium text-kol">
+                        {item.quantity} st
+                        <span className="block text-xs font-normal text-mull">
+                          {formatPrice(item.price)}
+                        </span>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -239,6 +247,18 @@ export default function BekraftelseClient() {
                       {formatPrice(stored.total)}
                     </span>
                   </div>
+                </div>
+                <div className="mt-4 border-t border-kol/10 pt-3 text-xs text-mull">
+                  <p>
+                    {COMPANY_INFO.legalName} · Org.nr {COMPANY_INFO.orgNumber}
+                  </p>
+                  <p className="mt-1">
+                    {COMPANY_INFO.returAddress.street}, {COMPANY_INFO.returAddress.postalCode}{" "}
+                    {COMPANY_INFO.returAddress.city}
+                  </p>
+                  <p className="mt-1">
+                    {COMPANY_INFO.email} · {COMPANY_INFO.phone}
+                  </p>
                 </div>
               </div>
             )}

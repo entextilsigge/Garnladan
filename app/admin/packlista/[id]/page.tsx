@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ADMIN_COOKIE_NAME, isValidSessionToken } from "@/lib/adminAuth";
 import { getOrderById } from "@/lib/data/orderStore";
 import { formatReturAddress } from "@/lib/company-info";
+import { formatOrderDate } from "@/lib/format";
 import PrintButton from "@/components/admin/PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -50,11 +51,7 @@ export default async function PacklistaPage(props: { params: Promise<{ id: strin
             <h1 className="mt-1 font-display text-2xl font-bold text-kol">{order.id}</h1>
           </div>
           <div className="text-right text-sm text-mull">
-            <p>
-              {new Date(order.createdAt).toLocaleDateString("sv-SE", {
-                dateStyle: "long",
-              })}
-            </p>
+            <p>{formatOrderDate(order.createdAt)}</p>
             <p className="mt-1">{formatReturAddress()}</p>
           </div>
         </div>

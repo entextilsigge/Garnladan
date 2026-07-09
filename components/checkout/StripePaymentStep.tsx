@@ -105,10 +105,12 @@ export default function StripePaymentStep({
           email: shipping.email,
           firstName: shipping.firstName,
           shippingLabel,
+          createdAt: new Date().toISOString(),
           items: lines.map((l) => ({
             name: l.product.name,
             color: l.colorway.name,
             quantity: l.quantity,
+            price: l.lineTotal,
           })),
         })
       );

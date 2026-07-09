@@ -158,10 +158,12 @@ export default function CheckoutFlow() {
           email: shipping.email,
           firstName: shipping.firstName,
           shippingLabel: shippingOption.label,
+          createdAt: new Date().toISOString(),
           items: lines.map((l) => ({
             name: l.product.name,
             color: l.colorway.name,
             quantity: l.quantity,
+            price: l.lineTotal,
           })),
         })
       );

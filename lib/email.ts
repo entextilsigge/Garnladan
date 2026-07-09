@@ -1,7 +1,8 @@
 import type { Order } from "@/lib/data/orderStore";
-import { calculateVatAmount, formatPrice } from "@/lib/format";
+import { calculateVatAmount, formatOrderDate, formatPrice } from "@/lib/format";
 import { SITE_URL } from "@/lib/seo";
 import { escapeHtml } from "@/lib/sanitize";
+import { COMPANY_INFO } from "@/lib/company-info";
 
 // ---------------------------------------------------------------------------
 // Bekräftelsemejl via Resend (https://resend.com).
@@ -54,10 +55,12 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
 }
 
 function buildOrderEmailHtml(order: Order): string {
+  // Pris per rad (inte bara en totalt delsumma) — krävs för att kvittot ska
+  // hålla även för flerradsordrar med olika produkter.
   const rows = order.items
     .map(
       (item) =>
-        `<tr><td style="padding:4px 12px 4px 0">${escapeHtml(item.name)} · ${escapeHtml(item.colorName)}</td><td style="padding:4px 0;text-align:right">${item.quantity} st</td></tr>`
+        `<tr><td style="padding:4px 12px 4px 0">${escapeHtml(item.name)} · ${escapeHtml(item.colorName)}</td><td style="padding:4px 12px 4px 0;text-align:right">${item.quantity} st</td><td style="padding:4px 0;text-align:right">${formatPrice(item.unitPrice * item.quantity)}</td></tr>`
     )
     .join("");
 
@@ -68,7 +71,7 @@ function buildOrderEmailHtml(order: Order): string {
   return `
     <div style="font-family:sans-serif;color:#241C14">
       <h1 style="font-size:20px">Tack ${escapeHtml(order.customer.firstName)}, din beställning är mottagen!</h1>
-      <p>Ordernummer <strong>${order.id}</strong>. Vi packar din beställning inom 24 timmar.</p>
+      <p>Ordernummer <strong>${order.id}</strong> · Orderdatum ${formatOrderDate(order.createdAt)}. Vi packar din beställning inom 24 timmar.</p>
       <table style="border-collapse:collapse;margin-top:16px">${rows}</table>
       <table style="border-collapse:collapse;margin-top:16px;width:100%;max-width:320px">
         <tr><td style="padding:2px 12px 2px 0;color:#5E4C3A">Delsumma</td><td style="padding:2px 0;text-align:right">${formatPrice(order.subtotal)}</td></tr>
@@ -80,7 +83,12 @@ function buildOrderEmailHtml(order: Order): string {
         Ångrat dig? Du har 14 dagars ångerrätt —
         <a href="${SITE_URL}/villkor/angerratt" style="color:#A64B33">läs mer och hämta ångerblanketten</a>.
       </p>
-      <p style="margin-top:24px;color:#5E4C3A;font-size:13px">Detta är ett automatiskt mejl från Garnladan.</p>
+      <div style="margin-top:24px;border-top:1px solid rgba(36,28,20,0.12);padding-top:14px;font-size:12px;color:#5E4C3A">
+        <p style="margin:0">${escapeHtml(COMPANY_INFO.legalName)} · Org.nr ${COMPANY_INFO.orgNumber}</p>
+        <p style="margin:4px 0 0">${escapeHtml(COMPANY_INFO.returAddress.street)}, ${COMPANY_INFO.returAddress.postalCode} ${escapeHtml(COMPANY_INFO.returAddress.city)}</p>
+        <p style="margin:4px 0 0">${COMPANY_INFO.email} · ${COMPANY_INFO.phone}</p>
+      </div>
+      <p style="margin-top:16px;color:#5E4C3A;font-size:13px">Detta är ett automatiskt mejl från Garnladan.</p>
     </div>
   `;
 }
