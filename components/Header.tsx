@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { useSettings } from "@/lib/settings";
 import { formatPrice } from "@/lib/format";
@@ -15,9 +16,15 @@ const NAV_LINKS = [
 ];
 
 export default function Header() {
+  const pathname = usePathname();
   const { itemCount, openDrawer } = useCart();
   const settings = useSettings();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // /admin är ett internt verktyg, inte en kundvänd sida — butikens header
+  // (kategorinav, varukorg, den gröna "Fri frakt"-toppen) hör inte hemma
+  // där (uppdrag 14). Se app/admin/layout.tsx för mer kontext.
+  if (pathname?.startsWith("/admin")) return null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-kol/10 bg-krita/90 backdrop-blur-md">
