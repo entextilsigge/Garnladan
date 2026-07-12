@@ -405,6 +405,91 @@ testa med en liten testorder så fort kontot finns (skapa ordern,
 återbetala den via adminknappen, kontrollera i Stripe Dashboard att
 pengarna går tillbaka).
 
+## Frakt & fraktsedlar (Fraktjakt)
+
+Orderdetaljvyn i admin ("Detaljer" på en order i Beställningar-fliken) har
+en **"Frakt & etiketter"**-sektion som bokar riktiga fraktsedlar via
+[Fraktjakt](https://www.fraktjakt.se) — se [`lib/fraktjakt.ts`](lib/fraktjakt.ts)
+för hela integrationen.
+
+**Så funkar knapparna:**
+- **"Skapa fraktsedel"** — bokar en sändning hos Fraktjakt (Shipment API)
+  med kundens adress, vikten uträknad från beställda produkters `grams`-fält
+  (se nedan) och rätt frakttjänst utifrån vad kunden valde i kassan:
+  - `"PostNord — ombud"` → bokas mot det `shipping_product_id` som är
+    ifyllt för ombud under Inställningar → Fraktjakt.
+  - `"Hemleverans"` → bokas mot motsvarande id för hemleverans.
+  - `"Hämta i Vargön"` → knappen visas inte alls — det finns ingen frakt
+    att boka, bara en lokal upphämtning.
+
+  Lyckas bokningen fylls spårningsnumret i **automatiskt** på ordern och
+  en "Öppna fraktsedel (PDF)"-länk dyker upp (öppnas i nytt fönster, redo
+  att skriva ut). Beroende på hur integrationen är konfigurerad i
+  Fraktjakt (automatiskt köp på/av) kan sändningen antingen bokas direkt,
+  eller bara förberedas — i så fall visas istället en länk för att
+  slutföra köpet manuellt på Fraktjakts egen sida.
+- **"Skriv ut packsedel"** — oförändrad funktionalitet
+  ([`/admin/packlista/[id]`](app/admin/packlista/[id]/page.tsx)), nu
+  visuellt grupperad tillsammans med fraktsedeln.
+- **"Skriv ut båda"** — dyker upp när en fraktsedel är bokad; öppnar
+  packsedeln och fraktsedel-PDF:en i varsin ny flik så båda kan skrivas ut
+  i samma arbetsmoment.
+- Att klicka "Skapa fraktsedel" ändrar **aldrig** automatiskt orderstatus
+  till "Skickad" — det är fortfarande ett separat, medvetet klick
+  ("Markera som skickad") som personalen gör efter att paketet faktiskt
+  lämnats till PostNord. Spårningsnumret är dock redan ifyllt då, så det
+  bara bekräftas istället för att skrivas in manuellt.
+
+**Ny packrutin för personalen** (ersätter den tidigare PDF-checklistan —
+**uppdatera den utskrivna rutinen** när detta är i drift):
+1. Öppna ordern som väntar packning.
+2. Klicka "Skapa fraktsedel" (om inte "Hämta i Vargön").
+3. Skriv ut fraktsedeln + packsedeln i samma vy ("Skriv ut båda").
+4. Packa, klistra fraktsedeln på paketet, lägg packsedeln i.
+5. Lämna till PostNord.
+6. Klicka "Markera som skickad" (spårningsnumret är redan ifyllt).
+
+**Konfiguration (Sigge, engångsjobb):**
+1. Fraktjakt-konto med en **fraktintegration** krävs. Logga in på
+   [https://api.fraktjakt.se/account/login](https://api.fraktjakt.se/account/login)
+   (eller registrera enligt Fraktjakts egen manual om kontot inte redan
+   finns).
+2. Under **"Installation"-fliken** för integrationen hittar du **Consignor
+   ID** (heltal) och **Consignor Key** (sträng) — lägg dem som
+   `FRAKTJAKT_CONSIGNOR_ID`/`FRAKTJAKT_CONSIGNOR_KEY` i `.env.local` och i
+   Vercels miljövariabler (se [`.env.example`](.env.example)).
+3. **Testläge**: Fraktjakt rekommenderar att registrera **två separata
+   integrationer** — en i Testläge, en skarp — och styr vilken som
+   används genom att välja vilket Consignor-par som ligger i
+   miljövariablerna. Det finns alltså ingen egen `FRAKTJAKT_TEST_MODE`-
+   variabel. Använd testintegrationens värden tills vi uttryckligen sagt
+   att vi går skarpt.
+4. Ett **Standardpaket** (mått) måste vara konfigurerat i integrationens
+   inställningar i Fraktjakt — vi skickar bara vikt (uträknad från
+   produkternas `grams`-fält), inte längd/bredd/höjd, så Fraktjakt
+   använder kontots förvalda paketmall för själva måtten. Utan ett
+   konfigurerat Standardpaket misslyckas fraktsökningen (Fraktjakts egen
+   dokumentation).
+5. Hämta **shipping_product_id** för PostNords ombud- respektive
+   hemleveranstjänst genom att öppna
+   `https://api.fraktjakt.se/shipping_products/xml_list?consignor_id=DITT_ID&consignor_key=DIN_NYCKEL`
+   i webbläsaren (kontospecifikt, går inte att hårdkoda) och fylla i
+   respektive id under **Inställningar → Fraktjakt** i admin.
+
+**Dokumenterat antagande — paketvikt:** vikten som skickas till Fraktjakt
+räknas ut från varje beställd produkts `grams`-fält (vikt per
+nystan/förpackning, redan satt per produkt i admin) × antal, summerat
+över hela ordern. Om en produkt skulle tas bort ur katalogen efter att
+ordern lagts (ovanligt) används ett standardvärde på 100 g per rad istället.
+Fysiska mått (längd/bredd/höjd) gissas inte alls — de hämtas från
+Fraktjakts egen paketmall (punkt 4 ovan).
+
+**Felhantering:** Fraktjakts eget felmeddelande (t.ex. ogiltig adress,
+tjänst ej tillgänglig till angiven ort) visas rakt av i admin — till
+skillnad från t.ex. Stripe-återbetalningar, som medvetet sanerar råa
+felmeddelanden. Här behöver admin se den faktiska orsaken för att kunna
+rätta adressen och försöka igen.
+
 ## Robusthet & säkerhet
 
 - **Webhook-idempotens**: [`lib/data/webhookEventStore.ts`](lib/data/webhookEventStore.ts)
