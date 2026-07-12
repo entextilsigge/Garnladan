@@ -17,10 +17,12 @@ export default function AdminDashboard({
   initialProducts,
   initialOrders,
   initialSettings,
+  fraktjaktConfigured,
 }: {
   initialProducts: Product[];
   initialOrders: Order[];
   initialSettings: ShippingSettings;
+  fraktjaktConfigured: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("produkter");
@@ -95,9 +97,17 @@ export default function AdminDashboard({
 
       <div className="mt-6">
         {tab === "produkter" && <ProductsPanel initialProducts={initialProducts} />}
-        {tab === "bestallningar" && <OrdersPanel initialOrders={initialOrders} />}
+        {tab === "bestallningar" && (
+          <OrdersPanel
+            initialOrders={initialOrders}
+            settings={initialSettings}
+            fraktjaktConfigured={fraktjaktConfigured}
+          />
+        )}
         {tab === "statistik" && <AnalyticsPanel />}
-        {tab === "installningar" && <SettingsPanel initialSettings={initialSettings} />}
+        {tab === "installningar" && (
+          <SettingsPanel initialSettings={initialSettings} fraktjaktConfigured={fraktjaktConfigured} />
+        )}
         {tab === "felloggen" && <ErrorLogPanel />}
       </div>
     </div>

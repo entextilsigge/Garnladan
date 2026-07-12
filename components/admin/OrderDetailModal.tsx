@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { formatPrice, calculateVatAmount } from "@/lib/format";
 import type { Order } from "@/lib/data/orderStore";
+import type { ShippingSettings } from "@/lib/checkout";
 
 function itemKey(slug: string, colorName: string): string {
   return `${slug}::${colorName}`;
@@ -17,13 +19,57 @@ function itemKey(slug: string, colorName: string): string {
 
 export default function OrderDetailModal({
   order,
+  settings,
+  fraktjaktConfigured,
   onClose,
   onUpdated,
 }: {
   order: Order;
+  settings: ShippingSettings;
+  fraktjaktConfigured: boolean;
   onClose: () => void;
   onUpdated: (order: Order) => void;
 }) {
+  // ---------------------------------------------------------- Frakt & etiketter
+  // "Hämta i Vargön" har ingen frakt att boka — knappen ska aldrig visas
+  // för såna ordrar (uppdrag 15).
+  const isPickup = order.shippingMethod === "ladan";
+  const shippingProductId =
+    order.shippingMethod === "ombud"
+      ? settings.fraktjaktOmbudProductId
+      : order.shippingMethod === "hem"
+        ? settings.fraktjaktHemProductId
+        : null;
+  const canCreateLabel = fraktjaktConfigured && Boolean(shippingProductId);
+  const hasShipment = Boolean(order.fraktjaktShipmentId);
+  const isBooked = hasShipment && Boolean(order.trackingNumber);
+
+  const [creatingLabel, setCreatingLabel] = useState(false);
+  const [labelError, setLabelError] = useState<string | null>(null);
+  const [pendingAccessLink, setPendingAccessLink] = useState<string | null>(null);
+
+  async function handleCreateLabel() {
+    setLabelError(null);
+    setPendingAccessLink(null);
+    setCreatingLabel(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/fraktsedel`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setLabelError(data?.error ?? "Kunde inte skapa fraktsedel.");
+        return;
+      }
+      if (data.order) onUpdated(data.order);
+      if (!data.booked) setPendingAccessLink(data.accessLink || null);
+    } finally {
+      setCreatingLabel(false);
+    }
+  }
+
+  function handlePrintBoth() {
+    window.open(`/admin/packlista/${order.id}`, "_blank");
+    window.open(`/api/admin/orders/${order.id}/fraktsedel`, "_blank");
+  }
   const alreadyRefunded = (order.refunds ?? []).reduce((sum, r) => sum + r.amount, 0);
   const remaining = Math.max(0, order.total - alreadyRefunded);
   const canRefund =
@@ -165,6 +211,110 @@ export default function OrderDetailModal({
               <p className="text-sm text-mull">Spårningsnr: {order.trackingNumber}</p>
             )}
           </div>
+        </div>
+
+        {/* -------------------------------------------------- Frakt & etiketter */}
+        <div className="mt-4 rounded-2xl bg-linne/50 p-5">
+          <h3 className="font-display text-lg font-semibold text-kol">Frakt &amp; etiketter</h3>
+
+          {isPickup ? (
+            <p className="mt-2 text-sm text-mull">
+              &quot;Hämta i Vargön&quot; — ingen frakt att boka, bara en lokal
+              upphämtning. Skriv ut packsedeln nedan när ordern är redo.
+            </p>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCreateLabel}
+                  disabled={!canCreateLabel || creatingLabel}
+                  title={
+                    !fraktjaktConfigured
+                      ? "Fraktjakt ej konfigurerat"
+                      : !shippingProductId
+                        ? `Fraktjakt-tjänst för "${order.shippingLabel}" är inte ifylld under Inställningar → Fraktjakt`
+                        : undefined
+                  }
+                  className="rounded-full bg-tegel px-6 py-2.5 text-sm font-semibold text-krita transition-colors hover:bg-tegel-dark disabled:cursor-not-allowed disabled:bg-kol/20 disabled:text-mull"
+                >
+                  {creatingLabel
+                    ? "Skapar fraktsedel…"
+                    : hasShipment
+                      ? "Skapa ny fraktsedel"
+                      : "Skapa fraktsedel"}
+                </button>
+                {!canCreateLabel && (
+                  <p className="text-xs font-medium text-tegel-dark">
+                    {!fraktjaktConfigured
+                      ? "Fraktjakt ej konfigurerat."
+                      : `Fraktjakt-tjänst för "${order.shippingLabel}" är inte konfigurerad (Inställningar → Fraktjakt).`}
+                  </p>
+                )}
+              </div>
+
+              {labelError && (
+                <p className="mt-3 rounded-xl bg-tegel/10 px-4 py-3 text-sm font-medium text-tegel-dark">
+                  {labelError}
+                </p>
+              )}
+
+              {isBooked && (
+                <div className="mt-3 rounded-xl bg-gran/10 p-4">
+                  <p className="text-sm font-medium text-gran">
+                    Fraktsedel klar — spårningsnummer {order.trackingNumber}.
+                  </p>
+                  <a
+                    href={`/api/admin/orders/${order.id}/fraktsedel`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-block text-sm font-semibold text-tegel underline underline-offset-2"
+                  >
+                    Öppna fraktsedel (PDF)
+                  </a>
+                </div>
+              )}
+
+              {hasShipment && !isBooked && (
+                <div className="mt-3 rounded-xl bg-senap/10 p-4">
+                  <p className="text-sm font-medium text-kol">
+                    Sändningen kunde inte bokas automatiskt av Fraktjakt — slutför
+                    köpet direkt i Fraktjakt, hämta sedan spårningsnumret därifrån
+                    och fyll i det ovan (fältet finns i orderlistan).
+                  </p>
+                  {pendingAccessLink && (
+                    <a
+                      href={pendingAccessLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block text-sm font-semibold text-tegel underline underline-offset-2"
+                    >
+                      Öppna sändningen i Fraktjakt
+                    </a>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-kol/10 pt-4">
+                <Link
+                  href={`/admin/packlista/${order.id}`}
+                  target="_blank"
+                  className="rounded-full border border-kol/15 px-5 py-2.5 text-sm font-medium text-kol transition-colors hover:bg-linne"
+                >
+                  Skriv ut packsedel
+                </Link>
+                {isBooked && (
+                  <button
+                    type="button"
+                    onClick={handlePrintBoth}
+                    className="rounded-full border border-kol/15 px-5 py-2.5 text-sm font-medium text-kol transition-colors hover:bg-linne"
+                  >
+                    Skriv ut båda
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {canReconcile && (

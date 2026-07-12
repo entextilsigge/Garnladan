@@ -6,6 +6,7 @@ import { ADMIN_COOKIE_NAME, isValidSessionToken } from "@/lib/adminAuth";
 import { getAllProducts } from "@/lib/data/productStore";
 import { getAllOrders } from "@/lib/data/orderStore";
 import { getShippingSettings } from "@/lib/data/settingsStore";
+import { isFraktjaktConfigured } from "@/lib/fraktjakt";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,11 @@ export default async function AdminPage() {
   ]);
 
   return (
-    <AdminDashboard initialProducts={products} initialOrders={orders} initialSettings={settings} />
+    <AdminDashboard
+      initialProducts={products}
+      initialOrders={orders}
+      initialSettings={settings}
+      fraktjaktConfigured={isFraktjaktConfigured()}
+    />
   );
 }

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import OrderDetailModal from "@/components/admin/OrderDetailModal";
 import { formatPrice, calculateVatAmount } from "@/lib/format";
 import type { Order, OrderStatus, PaymentStatus } from "@/lib/data/orderStore";
+import type { ShippingSettings } from "@/lib/checkout";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   vantar_packning: "Väntar packning",
@@ -47,7 +48,15 @@ function isStalePending(order: Order): boolean {
   return Date.now() - new Date(order.createdAt).getTime() > STALE_PENDING_MS;
 }
 
-export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] }) {
+export default function OrdersPanel({
+  initialOrders,
+  settings,
+  fraktjaktConfigured,
+}: {
+  initialOrders: Order[];
+  settings: ShippingSettings;
+  fraktjaktConfigured: boolean;
+}) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [query, setQuery] = useState("");
   // Default till "väntar packning" — den som packar dagligen ska se exakt
@@ -323,6 +332,8 @@ export default function OrdersPanel({ initialOrders }: { initialOrders: Order[] 
       {detailOrder && (
         <OrderDetailModal
           order={detailOrder}
+          settings={settings}
+          fraktjaktConfigured={fraktjaktConfigured}
           onClose={() => setDetailOrderId(null)}
           onUpdated={(updated) => {
             setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));

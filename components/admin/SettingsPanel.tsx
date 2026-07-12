@@ -5,8 +5,10 @@ import type { ShippingSettings } from "@/lib/checkout";
 
 export default function SettingsPanel({
   initialSettings,
+  fraktjaktConfigured,
 }: {
   initialSettings: ShippingSettings;
+  fraktjaktConfigured: boolean;
 }) {
   const [settings, setSettings] = useState<ShippingSettings>(initialSettings);
   const [draft, setDraft] = useState<ShippingSettings>(initialSettings);
@@ -44,9 +46,9 @@ export default function SettingsPanel({
     <div className="max-w-xl space-y-6">
       <form onSubmit={handleSave} className="space-y-6">
         <div className="rounded-2xl bg-senap/10 px-5 py-4 text-sm text-kol">
-          Ingen fraktförmedlare (t.ex. Fraktjakt/Sendcloud) är kopplad — det
-          här är enkla, fasta priser som du sätter själv. Frakt hanteras
-          manuellt via PostNord.
+          Priserna nedan är enkla, fasta flat rate-priser som du sätter
+          själv — oberoende av Fraktjakt-integrationen nedan, som bara
+          bokar och skriver ut fraktsedlar (inte prissättningen i kassan).
         </div>
 
         <div className="rounded-3xl bg-white/70 p-6 shadow-mjuk ring-1 ring-kol/5 sm:p-8">
@@ -122,6 +124,70 @@ export default function SettingsPanel({
               }
               className="w-full max-w-xs rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25 disabled:cursor-not-allowed disabled:opacity-50"
             />
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-white/70 p-6 shadow-mjuk ring-1 ring-kol/5 sm:p-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-xl font-bold text-kol">Fraktjakt</h2>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                fraktjaktConfigured ? "bg-gran/10 text-gran" : "bg-tegel/10 text-tegel-dark"
+              }`}
+            >
+              {fraktjaktConfigured ? "Konfigurerat på servern" : "Ej konfigurerat"}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-mull">
+            Bokar fraktsedlar och hämtar spårningsnummer automatiskt från
+            orderdetaljvyn (&quot;Skapa fraktsedel&quot;). Kräver
+            FRAKTJAKT_CONSIGNOR_ID/FRAKTJAKT_CONSIGNOR_KEY som
+            miljövariabler (se README) samt att respektive
+            shipping_product_id fylls i nedan — hämtas genom att öppna{" "}
+            <code className="rounded bg-linne px-1 py-0.5 text-xs">
+              https://api.fraktjakt.se/shipping_products/xml_list
+            </code>{" "}
+            med ditt Consignor-id/nyckel och leta upp PostNords tjänster.
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="fraktjaktOmbud" className="mb-1.5 block text-sm font-medium text-kol">
+                shipping_product_id — PostNord ombud
+              </label>
+              <input
+                id="fraktjaktOmbud"
+                type="number"
+                min={1}
+                placeholder="Ej ifyllt"
+                value={draft.fraktjaktOmbudProductId ?? ""}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    fraktjaktOmbudProductId: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+              />
+            </div>
+            <div>
+              <label htmlFor="fraktjaktHem" className="mb-1.5 block text-sm font-medium text-kol">
+                shipping_product_id — PostNord hemleverans
+              </label>
+              <input
+                id="fraktjaktHem"
+                type="number"
+                min={1}
+                placeholder="Ej ifyllt"
+                value={draft.fraktjaktHemProductId ?? ""}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    fraktjaktHemProductId: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+              />
+            </div>
           </div>
         </div>
 
