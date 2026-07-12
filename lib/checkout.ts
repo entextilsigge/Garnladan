@@ -88,6 +88,14 @@ export interface ShippingSettings {
   hemPrice: number;
   freeShippingEnabled: boolean;
   freeShippingThreshold: number;
+  /**
+   * Fraktjakts eget shipping_product_id för respektive tjänst (uppdrag
+   * 15) — kontospecifika, hämtas via Fraktjakts Shipping Products API och
+   * fylls i manuellt av admin. null tills de är ifyllda; "Skapa
+   * fraktsedel" är inaktiverad i admin för en leveransmetod utan ifyllt id.
+   */
+  fraktjaktOmbudProductId: number | null;
+  fraktjaktHemProductId: number | null;
 }
 
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
@@ -95,6 +103,8 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   hemPrice: 89,
   freeShippingEnabled: true,
   freeShippingThreshold: 499,
+  fraktjaktOmbudProductId: null,
+  fraktjaktHemProductId: null,
 };
 
 /** Flatrate-priset för en leveransmetod, innan ev. fri frakt-gräns tillämpas. */

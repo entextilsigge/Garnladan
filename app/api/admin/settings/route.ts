@@ -20,6 +20,11 @@ function validateSettingsInput(body: unknown): string | null {
   ) {
     return "Ogiltig fri frakt-gräns.";
   }
+  for (const key of ["fraktjaktOmbudProductId", "fraktjaktHemProductId"] as const) {
+    if (key in input && input[key] !== null && (typeof input[key] !== "number" || input[key]! <= 0)) {
+      return "Ogiltigt Fraktjakt-tjänste-id (måste vara ett positivt heltal, eller tomt).";
+    }
+  }
   return null;
 }
 

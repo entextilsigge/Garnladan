@@ -15,6 +15,8 @@ interface SettingsRow {
   hem_price: number;
   free_shipping_enabled: boolean;
   free_shipping_threshold: number;
+  fraktjakt_ombud_product_id: number | null;
+  fraktjakt_hem_product_id: number | null;
 }
 
 export async function getShippingSettings(): Promise<ShippingSettings> {
@@ -31,6 +33,13 @@ export async function getShippingSettings(): Promise<ShippingSettings> {
     hemPrice: Number(row.hem_price),
     freeShippingEnabled: row.free_shipping_enabled,
     freeShippingThreshold: Number(row.free_shipping_threshold),
+    // == null täcker BÅDE null (kolumnen finns, tomt värde) och undefined
+    // (kolumnen finns inte än — migration 0003 inte körd) — samma säkra
+    // fallback till "ej konfigurerat" i båda fallen, inget NaN i UI:t.
+    fraktjaktOmbudProductId:
+      row.fraktjakt_ombud_product_id == null ? null : Number(row.fraktjakt_ombud_product_id),
+    fraktjaktHemProductId:
+      row.fraktjakt_hem_product_id == null ? null : Number(row.fraktjakt_hem_product_id),
   };
 }
 
@@ -47,6 +56,14 @@ export async function updateShippingSettings(patch: Partial<ShippingSettings>): 
       typeof patch.freeShippingThreshold === "number"
         ? patch.freeShippingThreshold
         : current.freeShippingThreshold,
+    fraktjaktOmbudProductId:
+      "fraktjaktOmbudProductId" in patch
+        ? patch.fraktjaktOmbudProductId ?? null
+        : current.fraktjaktOmbudProductId,
+    fraktjaktHemProductId:
+      "fraktjaktHemProductId" in patch
+        ? patch.fraktjaktHemProductId ?? null
+        : current.fraktjaktHemProductId,
   };
 
   const { error } = await getSupabaseServiceClient()
@@ -56,6 +73,8 @@ export async function updateShippingSettings(patch: Partial<ShippingSettings>): 
       hem_price: next.hemPrice,
       free_shipping_enabled: next.freeShippingEnabled,
       free_shipping_threshold: next.freeShippingThreshold,
+      fraktjakt_ombud_product_id: next.fraktjaktOmbudProductId,
+      fraktjakt_hem_product_id: next.fraktjaktHemProductId,
     })
     .eq("id", 1);
   throwIfSupabaseError(error);

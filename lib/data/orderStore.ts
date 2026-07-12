@@ -9,11 +9,14 @@ import { getSupabaseServiceClient, throwIfSupabaseError } from "@/lib/supabase";
 // ---------------------------------------------------------------------------
 
 /**
- * Packflödet — helt manuellt, ingen fraktförmedlarintegration (Fraktjakt/
- * Sendcloud) i det här skedet. "vantar_packning" är default för en ny,
- * betald order; "packad" är ett valfritt mellansteg; "skickad" sätts när
+ * Packflödet. "vantar_packning" är default för en ny, betald order;
+ * "packad" är ett valfritt mellansteg; "skickad" sätts när
  * spårningsnumret matats in (se updateOrderFulfillment nedan), vilket
- * triggar skickad-mejlet i lib/email.ts.
+ * triggar skickad-mejlet i lib/email.ts. Spårningsnumret fylls numera i
+ * automatiskt när admin skapar en fraktsedel via Fraktjakt (uppdrag 15,
+ * se lib/fraktjakt.ts) — statusbytet till "skickad" görs ändå alltid som
+ * ett separat, medvetet klick av personalen efter att paketet faktiskt
+ * lämnats till PostNord.
  */
 export type OrderStatus = "vantar_packning" | "packad" | "skickad";
 
@@ -71,6 +74,9 @@ export interface Order {
   paymentStatus: PaymentStatus;
   paymentIntentId?: string;
   trackingNumber?: string;
+  /** Fraktjakts interna sändnings-id + access-kod (uppdrag 15) — sparas när en fraktsedel skapats, används för att hämta etikett-PDF:en på nytt utan att boka en ny sändning. */
+  fraktjaktShipmentId?: number;
+  fraktjaktAccessCode?: string;
   customer: OrderCustomer;
   shippingMethod: string;
   shippingLabel: string;
@@ -107,6 +113,8 @@ interface OrderRow {
   payment_status: PaymentStatus;
   payment_intent_id: string | null;
   tracking_number: string | null;
+  fraktjakt_shipment_id: number | null;
+  fraktjakt_access_code: string | null;
   customer_first_name: string;
   customer_last_name: string;
   customer_email: string;
@@ -137,6 +145,8 @@ function rowToOrder(row: OrderRow): Order {
     paymentStatus: row.payment_status,
     paymentIntentId: row.payment_intent_id ?? undefined,
     trackingNumber: row.tracking_number ?? undefined,
+    fraktjaktShipmentId: row.fraktjakt_shipment_id ?? undefined,
+    fraktjaktAccessCode: row.fraktjakt_access_code ?? undefined,
     customer: {
       firstName: row.customer_first_name,
       lastName: row.customer_last_name,
@@ -249,6 +259,28 @@ export async function updateOrderFulfillment(
   const patch: Record<string, unknown> = {};
   if (updates.status) patch.status = updates.status;
   if (updates.trackingNumber !== undefined) patch.tracking_number = updates.trackingNumber;
+
+  const { error } = await getSupabaseServiceClient().from("orders").update(patch).eq("id", id);
+  throwIfSupabaseError(error);
+  return (await getOrderById(id)) ?? null;
+}
+
+/**
+ * Sparar Fraktjakts sändnings-referens på ordern efter en lyckad
+ * "Skapa fraktsedel" (se app/api/admin/orders/[id]/fraktsedel/route.ts).
+ * Fyller ALLTID i spårningsnumret automatiskt om Fraktjakt bokat/köpt
+ * sändningen direkt — personalen slipper skriva in det manuellt när de
+ * senare klickar "Markera som skickad".
+ */
+export async function saveFraktjaktShipment(
+  id: string,
+  update: { shipmentId: number; accessCode: string; trackingNumber: string | null }
+): Promise<Order | null> {
+  const patch: Record<string, unknown> = {
+    fraktjakt_shipment_id: update.shipmentId,
+    fraktjakt_access_code: update.accessCode,
+  };
+  if (update.trackingNumber) patch.tracking_number = update.trackingNumber;
 
   const { error } = await getSupabaseServiceClient().from("orders").update(patch).eq("id", id);
   throwIfSupabaseError(error);
