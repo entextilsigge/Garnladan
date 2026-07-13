@@ -428,6 +428,12 @@ för hela integrationen.
   Fraktjakt (automatiskt köp på/av) kan sändningen antingen bokas direkt,
   eller bara förberedas — i så fall visas istället en länk för att
   slutföra köpet manuellt på Fraktjakts egen sida.
+
+  Så fort en order har en bokad fraktsedel försvinner "Skapa
+  fraktsedel"-knappen — istället visas en separat, mindre framträdande
+  **"Boka om fraktsedel"**-knapp bakom en bekräftelsedialog ("Detta bokar
+  en ny fraktsedel och kan innebära en extra kostnad — är du säker?").
+  Det är medvetet: se "Dubbelbokningsskydd" nedan.
 - **"Skriv ut packsedel"** — oförändrad funktionalitet
   ([`/admin/packlista/[id]`](app/admin/packlista/[id]/page.tsx)), nu
   visuellt grupperad tillsammans med fraktsedeln.
@@ -489,6 +495,79 @@ tjänst ej tillgänglig till angiven ort) visas rakt av i admin — till
 skillnad från t.ex. Stripe-återbetalningar, som medvetet sanerar råa
 felmeddelanden. Här behöver admin se den faktiska orsaken för att kunna
 rätta adressen och försöka igen.
+
+**Databasmigreringar krävs:** både grundintegrationen
+([`0003_fraktjakt.sql`](supabase/migrations/0003_fraktjakt.sql)) och
+tilläggen nedan ([`0004_fraktjakt_saldo_dubbelbokning.sql`](supabase/migrations/0004_fraktjakt_saldo_dubbelbokning.sql))
+måste köras i Supabase Dashboard → SQL Editor innan Fraktjakt-funktionerna
+fungerar mot databasen (samma manuella steg som `0001_initial_schema.sql`
+— det finns ingen länkad Supabase CLI eller direkt Postgres-anslutning i
+utvecklingsmiljön, se "Datalagring / Supabase" ovan). Utan dem faller
+inställningssidan tillbaka på standardvärden (ingen krasch) men
+**sparning** av Fraktjakt-relaterade inställningar och all bokning ger
+ett tydligt serverfel tills migreringarna är körda.
+
+### Saldovarning
+
+Fraktjakts API exponerar inget kontosaldo — det är kontrollerat mot den
+officiella API-dokumentationen (v4.10.1): "Status API" är bara en
+drifts-koll (`ALIVE`/`DEAD`), inget saldoanrop finns. Istället bygger
+[`lib/data/fraktjaktBalanceStore.ts`](lib/data/fraktjaktBalanceStore.ts)
+en egen uppskattning:
+
+```
+uppskattat saldo = "senast påfyllt till"-belopp − summan av alla bokade
+                    fraktsedlars SCHABLONKOSTNAD sedan dess
+```
+
+Schablonkostnaden är **inte** Fraktjakts faktiska debiterade belopp (det
+returneras inte av Shipment- eller Track & Trace-API:erna som används för
+bokning/spårning) utan två admin-inmatade värden — "Uppskattad kostnad —
+ombud/hemleverans" under Inställningar → Fraktjakt → Saldovarning, satta
+till samma belopp som kassans flat rate-priser som ett rimligt
+startvärde. Justera dem mot vad Fraktjakt faktiskt fakturerar er över
+tid för en mer träffsäker varning.
+
+Admin fyller manuellt i **"Senast påfyllt till (kr)"** varje gång kontot
+fylls på i Fraktjakt — tidpunkten sparas automatiskt av servern. En
+**varningströskel** (kr, default 500) är också redigerbar. Så fort
+uppskattat saldo understiger tröskeln visas en röd banner överst i admin
+("Fraktjakt-saldo lågt (XXX kr) — fyll på för att undvika stopp vid
+packning"), oavsett vilken flik som är öppen — hämtas en gång vid
+inladdning av admin, cachas serverside i 3 minuter (ren DB-summering, inget
+externt API-anrop, men cachas ändå för att slippa räkna om vid varje
+sidladdning). Ingen "senast påfyllt"-referens satt än → ingen banner (inget
+att jämföra mot).
+
+### Dubbelbokningsskydd
+
+Ett dubbelklick på "Skapa fraktsedel" — eller två nästan samtidiga
+förfrågningar av annan anledning — får aldrig boka två fraktsedlar hos
+Fraktjakt (dubbel kostnad, förvirrande extra etikett). Skyddet har tre
+lager, samma mönster som återbetalningsskyddet i uppdrag 8/13
+([`reserve_refund`](supabase/migrations/0001_initial_schema.sql)):
+
+1. **Idempotens:** POST-routen kollar ATOMÄRT om ordern redan har en
+   sparad fraktsedel innan Fraktjakt ens kontaktas
+   (`reserve_fraktjakt_booking` i
+   [`0004_fraktjakt_saldo_dubbelbokning.sql`](supabase/migrations/0004_fraktjakt_saldo_dubbelbokning.sql)).
+   Redan bokad → returnerar samma fraktsedel/spårningsnummer direkt, inget
+   nytt Fraktjakt-anrop.
+2. **Klientsidan:** "Skapa fraktsedel"/"Boka om fraktsedel"-knapparna
+   inaktiveras direkt vid klick tills svaret kommit tillbaka, så ett
+   snabbt dubbelklick inte ens hinner skicka två requests.
+3. **Race-skydd:** om två förfrågningar ändå når servern nästan samtidigt
+   låser ett DB-lås (`fraktjakt_booking_locked_at`, satt INNAN det
+   externa Fraktjakt-anropet) ordern i upp till 2 minuter — den andra
+   förfrågan avvisas med 409 istället för att boka en andra sändning. Ett
+   lås äldre än 2 minuter (t.ex. efter en kraschad serverless-instans)
+   räknas som övergivet och kan tas om, så en bugg aldrig låser en order
+   permanent.
+
+**Medveten ombokning** (t.ex. fel adress upptäckt efter första
+bokningen) görs via en separat **"Boka om fraktsedel"**-knapp bakom en
+bekräftelsedialog — den enkla "Skapa fraktsedel"-vägen bokar aldrig om av
+misstag.
 
 ## Robusthet & säkerhet
 
