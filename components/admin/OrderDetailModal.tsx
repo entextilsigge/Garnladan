@@ -48,12 +48,21 @@ export default function OrderDetailModal({
   const [labelError, setLabelError] = useState<string | null>(null);
   const [pendingAccessLink, setPendingAccessLink] = useState<string | null>(null);
 
-  async function handleCreateLabel() {
+  // Skickar rebook=true bara från handleRebookLabel nedan — servern gör
+  // annars INGET nytt Fraktjakt-anrop om ordern redan har en sändning
+  // (dubbelbokningsskydd, tillägg till uppdrag 15). disabled={creatingLabel}
+  // på knappen nedan är klientsidans skydd mot att ett snabbt dubbelklick
+  // ens hinner skicka två requests.
+  async function bookLabel(rebook: boolean) {
     setLabelError(null);
     setPendingAccessLink(null);
     setCreatingLabel(true);
     try {
-      const res = await fetch(`/api/admin/orders/${order.id}/fraktsedel`, { method: "POST" });
+      const res = await fetch(`/api/admin/orders/${order.id}/fraktsedel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rebook }),
+      });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setLabelError(data?.error ?? "Kunde inte skapa fraktsedel.");
@@ -64,6 +73,25 @@ export default function OrderDetailModal({
     } finally {
       setCreatingLabel(false);
     }
+  }
+
+  function handleCreateLabel() {
+    void bookLabel(false);
+  }
+
+  // "Boka om fraktsedel" — medveten ombokning (t.ex. fel adress upptäckt
+  // efter första bokningen), ALDRIG en följd av ett dubbelklick på
+  // "Skapa fraktsedel" (den knappen visas inte ens längre efter en lyckad
+  // bokning, se JSX nedan). Bekräftelsedialog krävs enligt uppdraget.
+  function handleRebookLabel() {
+    if (
+      !confirm(
+        "Detta bokar en ny fraktsedel och kan innebära en extra kostnad — är du säker?"
+      )
+    ) {
+      return;
+    }
+    void bookLabel(true);
   }
 
   function handlePrintBoth() {
@@ -225,25 +253,34 @@ export default function OrderDetailModal({
           ) : (
             <>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCreateLabel}
-                  disabled={!canCreateLabel || creatingLabel}
-                  title={
-                    !fraktjaktConfigured
-                      ? "Fraktjakt ej konfigurerat"
-                      : !shippingProductId
-                        ? `Fraktjakt-tjänst för "${order.shippingLabel}" är inte ifylld under Inställningar → Fraktjakt`
-                        : undefined
-                  }
-                  className="rounded-full bg-tegel px-6 py-2.5 text-sm font-semibold text-krita transition-colors hover:bg-tegel-dark disabled:cursor-not-allowed disabled:bg-kol/20 disabled:text-mull"
-                >
-                  {creatingLabel
-                    ? "Skapar fraktsedel…"
-                    : hasShipment
-                      ? "Skapa ny fraktsedel"
-                      : "Skapa fraktsedel"}
-                </button>
+                {!hasShipment && (
+                  <button
+                    type="button"
+                    onClick={handleCreateLabel}
+                    disabled={!canCreateLabel || creatingLabel}
+                    title={
+                      !fraktjaktConfigured
+                        ? "Fraktjakt ej konfigurerat"
+                        : !shippingProductId
+                          ? `Fraktjakt-tjänst för "${order.shippingLabel}" är inte ifylld under Inställningar → Fraktjakt`
+                          : undefined
+                    }
+                    className="rounded-full bg-tegel px-6 py-2.5 text-sm font-semibold text-krita transition-colors hover:bg-tegel-dark disabled:cursor-not-allowed disabled:bg-kol/20 disabled:text-mull"
+                  >
+                    {creatingLabel ? "Skapar fraktsedel…" : "Skapa fraktsedel"}
+                  </button>
+                )}
+                {hasShipment && (
+                  <button
+                    type="button"
+                    onClick={handleRebookLabel}
+                    disabled={!canCreateLabel || creatingLabel}
+                    title="Bokar en helt ny fraktsedel — bara för fall som fel adress upptäckt efter första bokningen"
+                    className="rounded-full border border-tegel/40 px-6 py-2.5 text-sm font-semibold text-tegel-dark transition-colors hover:bg-tegel/10 disabled:cursor-not-allowed disabled:border-kol/15 disabled:text-mull"
+                  >
+                    {creatingLabel ? "Bokar om…" : "Boka om fraktsedel"}
+                  </button>
+                )}
                 {!canCreateLabel && (
                   <p className="text-xs font-medium text-tegel-dark">
                     {!fraktjaktConfigured

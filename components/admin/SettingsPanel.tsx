@@ -1,7 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ShippingSettings } from "@/lib/checkout";
+
+interface FraktjaktBalanceEstimate {
+  estimatedBalance: number | null;
+  threshold: number;
+  lastTopupAmount: number;
+  lastTopupAt: string | null;
+  lowBalance: boolean;
+}
 
 export default function SettingsPanel({
   initialSettings,
@@ -17,6 +25,24 @@ export default function SettingsPanel({
   const [saved, setSaved] = useState(false);
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
+
+  // Uppskattat Fraktjakt-saldo just nu (tillägg till uppdrag 15) — hämtas
+  // vid inladdning och på nytt efter varje lyckad sparning, så admin ser
+  // direkt hur en ny tröskel/påfyllning slår igenom.
+  const [balance, setBalance] = useState<FraktjaktBalanceEstimate | null>(null);
+  useEffect(() => {
+    if (!fraktjaktConfigured) return;
+    let cancelled = false;
+    fetch("/api/admin/fraktjakt-balance")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setBalance(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fraktjaktConfigured, settings]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -188,6 +214,123 @@ export default function SettingsPanel({
                 className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
               />
             </div>
+          </div>
+
+          <div className="mt-6 border-t border-kol/10 pt-5">
+            <h3 className="text-sm font-semibold text-kol">Saldovarning</h3>
+            <p className="mt-1 text-xs text-mull">
+              Fraktjakt exponerar inget kontosaldo via API:et — det här är en
+              egen uppskattning (senast påfyllt belopp minus loggade
+              fraktsedlars schablonkostnad sedan dess), inte Fraktjakts
+              faktiska saldo.
+            </p>
+
+            {fraktjaktConfigured && (
+              <p className="mt-3 text-sm text-kol">
+                Uppskattat saldo just nu:{" "}
+                {balance === null ? (
+                  <span className="text-mull">hämtar…</span>
+                ) : balance.estimatedBalance === null ? (
+                  <span className="text-mull">
+                    okänt — sätt &quot;senast påfyllt till&quot; nedan för att börja räkna.
+                  </span>
+                ) : (
+                  <span className={balance.lowBalance ? "font-semibold text-tegel-dark" : "font-semibold text-gran"}>
+                    {Math.round(balance.estimatedBalance)} kr
+                  </span>
+                )}
+              </p>
+            )}
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="fraktjaktBalanceThreshold" className="mb-1.5 block text-sm font-medium text-kol">
+                  Varningströskel (kr)
+                </label>
+                <input
+                  id="fraktjaktBalanceThreshold"
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={draft.fraktjaktBalanceThreshold}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, fraktjaktBalanceThreshold: Number(e.target.value) }))
+                  }
+                  className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+                />
+              </div>
+              <div>
+                <label htmlFor="fraktjaktLastTopupAmount" className="mb-1.5 block text-sm font-medium text-kol">
+                  Senast påfyllt till (kr)
+                </label>
+                <input
+                  id="fraktjaktLastTopupAmount"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={draft.fraktjaktLastTopupAmount}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, fraktjaktLastTopupAmount: Number(e.target.value) }))
+                  }
+                  className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+                />
+                <p className="mt-1 text-xs text-mull">
+                  Uppdatera efter varje påfyllning i Fraktjakt — datumet
+                  sparas automatiskt.
+                  {draft.fraktjaktLastTopupAt && (
+                    <>
+                      {" "}
+                      Senast satt{" "}
+                      {new Date(draft.fraktjaktLastTopupAt).toLocaleString("sv-SE", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                      .
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="fraktjaktEstimatedCostOmbud" className="mb-1.5 block text-sm font-medium text-kol">
+                  Uppskattad kostnad — ombud (kr)
+                </label>
+                <input
+                  id="fraktjaktEstimatedCostOmbud"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draft.fraktjaktEstimatedCostOmbud}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, fraktjaktEstimatedCostOmbud: Number(e.target.value) }))
+                  }
+                  className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+                />
+              </div>
+              <div>
+                <label htmlFor="fraktjaktEstimatedCostHem" className="mb-1.5 block text-sm font-medium text-kol">
+                  Uppskattad kostnad — hemleverans (kr)
+                </label>
+                <input
+                  id="fraktjaktEstimatedCostHem"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draft.fraktjaktEstimatedCostHem}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, fraktjaktEstimatedCostHem: Number(e.target.value) }))
+                  }
+                  className="w-full rounded-xl border border-kol/15 bg-white px-4 py-2.5 text-sm text-kol focus:border-tegel focus:outline-none focus:ring-2 focus:ring-tegel/25"
+                />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-mull">
+              Schablonvärden — INTE Fraktjakts faktiska pris (går inte att
+              hämta via API:et), justera mot vad Fraktjakt faktiskt
+              debiterar er över tid.
+            </p>
           </div>
         </div>
 

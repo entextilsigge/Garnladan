@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductsPanel from "@/components/admin/ProductsPanel";
 import OrdersPanel from "@/components/admin/OrdersPanel";
@@ -28,6 +28,30 @@ export default function AdminDashboard({
   const [tab, setTab] = useState<Tab>("produkter");
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Saldovarning för Fraktjakt (tillägg till uppdrag 15) — hämtas en gång
+  // vid inladdning av admin (inte per flik-byte), se
+  // lib/data/fraktjaktBalanceStore.ts för varför det här är en egen
+  // uppskattning istället för ett riktigt saldoanrop.
+  const [balanceWarning, setBalanceWarning] = useState<{ estimatedBalance: number; threshold: number } | null>(
+    null
+  );
+  useEffect(() => {
+    if (!fraktjaktConfigured) return;
+    let cancelled = false;
+    fetch("/api/admin/fraktjakt-balance")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setBalanceWarning(
+          data.lowBalance ? { estimatedBalance: data.estimatedBalance, threshold: data.threshold } : null
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fraktjaktConfigured]);
+
   async function handleLogout() {
     setLoggingOut(true);
     await fetch("/api/admin/logout", { method: "POST" });
@@ -51,6 +75,13 @@ export default function AdminDashboard({
           {loggingOut ? "Loggar ut…" : "Logga ut"}
         </button>
       </div>
+
+      {balanceWarning && (
+        <div className="mt-6 rounded-2xl bg-tegel/10 px-5 py-4 text-sm font-medium text-tegel-dark">
+          Fraktjakt-saldo lågt (uppskattat {Math.round(balanceWarning.estimatedBalance)} kr) — fyll
+          på för att undvika stopp vid packning.
+        </div>
+      )}
 
       <div className="mt-6 flex gap-2">
         <button
