@@ -25,6 +25,23 @@ function validateSettingsInput(body: unknown): string | null {
       return "Ogiltigt Fraktjakt-tjänste-id (måste vara ett positivt heltal, eller tomt).";
     }
   }
+  if (
+    "fraktjaktBalanceThreshold" in input &&
+    (typeof input.fraktjaktBalanceThreshold !== "number" || input.fraktjaktBalanceThreshold < 0)
+  ) {
+    return "Ogiltig varningströskel för Fraktjakt-saldo.";
+  }
+  if (
+    "fraktjaktLastTopupAmount" in input &&
+    (typeof input.fraktjaktLastTopupAmount !== "number" || input.fraktjaktLastTopupAmount < 0)
+  ) {
+    return "Ogiltigt belopp för \"senast påfyllt till\".";
+  }
+  for (const key of ["fraktjaktEstimatedCostOmbud", "fraktjaktEstimatedCostHem"] as const) {
+    if (key in input && (typeof input[key] !== "number" || input[key]! < 0)) {
+      return "Ogiltig uppskattad fraktkostnad.";
+    }
+  }
   return null;
 }
 

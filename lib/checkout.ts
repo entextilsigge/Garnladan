@@ -96,6 +96,21 @@ export interface ShippingSettings {
    */
   fraktjaktOmbudProductId: number | null;
   fraktjaktHemProductId: number | null;
+  /**
+   * Saldovarning (tillägg till uppdrag 15) — Fraktjakts API exponerar inget
+   * kontosaldo, så det här är en egen uppskattning: fraktjaktLastTopupAmount
+   * (satt manuellt av admin vid varje påfyllning, tidsstämplas automatiskt
+   * i fraktjaktLastTopupAt) minus summan av alla loggade
+   * fraktjaktEstimatedCost{Ombud,Hem} sedan dess. Varningen visas i admin
+   * när uppskattat saldo understiger fraktjaktBalanceThreshold — se
+   * lib/data/fraktjaktBalanceStore.ts.
+   */
+  fraktjaktBalanceThreshold: number;
+  fraktjaktLastTopupAmount: number;
+  fraktjaktLastTopupAt: string | null;
+  /** Schablonkostnad per fraktsedel, per tjänst — se fraktjaktBalanceStore.ts. */
+  fraktjaktEstimatedCostOmbud: number;
+  fraktjaktEstimatedCostHem: number;
 }
 
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
@@ -105,6 +120,11 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   freeShippingThreshold: 499,
   fraktjaktOmbudProductId: null,
   fraktjaktHemProductId: null,
+  fraktjaktBalanceThreshold: 500,
+  fraktjaktLastTopupAmount: 0,
+  fraktjaktLastTopupAt: null,
+  fraktjaktEstimatedCostOmbud: 49,
+  fraktjaktEstimatedCostHem: 89,
 };
 
 /** Flatrate-priset för en leveransmetod, innan ev. fri frakt-gräns tillämpas. */

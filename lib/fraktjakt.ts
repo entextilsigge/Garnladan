@@ -262,6 +262,17 @@ export async function fetchFraktjaktTrackingNumber(shipmentId: number): Promise<
   return (result.tracking_number as string | undefined) ?? null;
 }
 
+/**
+ * Bygger länken till en sändning i Fraktjakts eget gränssnitt utifrån
+ * sändnings-id + access_code — används för att återskapa access_link utan
+ * att behöva spara den separat i databasen (bara shipmentId/accessCode
+ * sparas på ordern, se saveFraktjaktShipment i lib/data/orderStore.ts).
+ * Exakt samma format som Fraktjakt själva returnerar i access_link.
+ */
+export function buildFraktjaktAccessLink(shipmentId: number, accessCode: string): string {
+  return `https://www.fraktjakt.se/shipments/show/${shipmentId}?access_code=${encodeURIComponent(accessCode)}`;
+}
+
 export interface FraktjaktLabel {
   typeId: number;
   typeName: string;

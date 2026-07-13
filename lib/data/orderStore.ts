@@ -279,12 +279,61 @@ export async function saveFraktjaktShipment(
   const patch: Record<string, unknown> = {
     fraktjakt_shipment_id: update.shipmentId,
     fraktjakt_access_code: update.accessCode,
+    // Nollställer alltid "bokning pågår"-låset (se reserveFraktjaktBooking
+    // nedan) i samma skrivning som den lyckade sändningen sparas — låset
+    // ska aldrig kunna bli kvarglömt efter en lyckad bokning.
+    fraktjakt_booking_locked_at: null,
   };
   if (update.trackingNumber) patch.tracking_number = update.trackingNumber;
 
   const { error } = await getSupabaseServiceClient().from("orders").update(patch).eq("id", id);
   throwIfSupabaseError(error);
   return (await getOrderById(id)) ?? null;
+}
+
+// =============================================================================
+// DUBBELBOKNINGSSKYDD FÖR FRAKTSEDLAR (tillägg till uppdrag 15) — samma
+// tvåfas-mönster som återbetalningsskyddet ovan: reserveFraktjaktBooking
+// låser ordern och avgör ATOMÄRT om ett Fraktjakt-anrop får göras, INNAN
+// det långsamma externa anropet görs (utanför transaktionen). Se
+// reserve_fraktjakt_booking/release_fraktjakt_booking_lock i
+// supabase/migrations/0004_fraktjakt_saldo_dubbelbokning.sql.
+// =============================================================================
+
+export type ReserveFraktjaktBookingResult =
+  | { ok: true }
+  | {
+      ok: false;
+      alreadyBooked: true;
+      shipmentId: number;
+      accessCode: string;
+      trackingNumber: string | null;
+    }
+  | { ok: false; alreadyBooked?: false; error: string };
+
+/**
+ * p_force=true används ENDAST av den separata, bekräftelsedialog-skyddade
+ * "Boka om fraktsedel"-funktionen — hoppar då över "redan bokad"-
+ * kortslutningen och tar ett nytt lås även om ordern redan har en sändning.
+ */
+export async function reserveFraktjaktBooking(
+  orderId: string,
+  force = false
+): Promise<ReserveFraktjaktBookingResult> {
+  const { data, error } = await getSupabaseServiceClient().rpc("reserve_fraktjakt_booking", {
+    p_order_id: orderId,
+    p_force: force,
+  });
+  throwIfSupabaseError(error);
+  return data as ReserveFraktjaktBookingResult;
+}
+
+/** Släpper "bokning pågår"-låset efter ett misslyckat Fraktjakt-anrop, så ordern inte förblir låst. */
+export async function releaseFraktjaktBookingLock(orderId: string): Promise<void> {
+  const { error } = await getSupabaseServiceClient().rpc("release_fraktjakt_booking_lock", {
+    p_order_id: orderId,
+  });
+  throwIfSupabaseError(error);
 }
 
 export async function updatePaymentStatus(id: string, paymentStatus: PaymentStatus): Promise<Order | null> {
