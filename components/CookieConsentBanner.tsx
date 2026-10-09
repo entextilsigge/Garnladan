@@ -32,8 +32,8 @@ export default function CookieConsentBanner() {
         <p className="text-sm leading-relaxed text-krita/85">
           Vi använder cookies. Nödvändiga cookies (t.ex. varukorg och
           kassans sessionshantering) sätts alltid eftersom sajten inte
-          fungerar utan dem. Icke-nödvändiga cookies (marknadsförings- och
-          attributionsstatistik) sätts bara om du godkänner det. Läs mer i{" "}
+          fungerar utan dem. Icke-nödvändiga cookies (statistik via Google
+          Analytics samt marknadsförings- och attributionsstatistik) sätts bara om du godkänner det. Läs mer i{" "}
           <Link href="/integritetspolicy" className="underline underline-offset-2 hover:text-senap">
             vår integritetspolicy
           </Link>
@@ -65,9 +65,10 @@ export default function CookieConsentBanner() {
               />
               <span>
                 <span className="block font-semibold">
-                  Marknadsföring &amp; attribution
+                  Statistik, marknadsföring &amp; attribution
                 </span>
                 <span className="block text-xs text-krita/60">
+                  Google Analytics (anonym besöksstatistik) samt en
                   UTM-cookie som kommer ihåg vilken kampanj/källa du kom
                   ifrån, så vi kan se vad som fungerar.
                 </span>

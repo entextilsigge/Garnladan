@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import CartDrawer from "@/components/CartDrawer";
 import UtmCapture from "@/components/UtmCapture";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
 import { CartProvider } from "@/lib/cart";
 import { SettingsProvider } from "@/lib/settings";
 import { SITE_URL } from "@/lib/seo";
@@ -65,6 +66,7 @@ export default function RootLayout({
     >
       <body>
         <UtmCapture />
+        <GoogleAnalytics />
         <SettingsProvider>
           <CartProvider>
             <Header />

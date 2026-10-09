@@ -50,6 +50,11 @@ export default function IntegritetspolicyPage() {
             nyhetsbrev). Detta är en icke-nödvändig cookie och sätts bara
             om du samtyckt till det, se avsnittet om cookies nedan.
           </li>
+          <li>
+            Besöksstatistik via Google Analytics 4 — vilka sidor du
+            besöker, ungefärlig plats, enhet och webbläsare. Laddas och
+            sätter cookies (_ga) bara om du samtyckt till det.
+          </li>
         </ul>
       </section>
 
@@ -61,6 +66,7 @@ export default function IntegritetspolicyPage() {
           <li>Namn, e-post och adress: för att kunna leverera din beställning och skicka orderbekräftelse.</li>
           <li>Betalningsuppgifter (via Stripe): för att kunna ta betalt för din beställning.</li>
           <li>UTM/attribution-cookie: för att förstå vilka marknadsföringskanaler som fungerar. Detta påverkar inte hur din beställning hanteras.</li>
+          <li>Google Analytics: för att förstå hur sajten används och förbättra den. Uppgifterna behandlas av Google och kan innebära överföring till tredjeland.</li>
         </ul>
       </section>
 
@@ -118,12 +124,13 @@ export default function IntegritetspolicyPage() {
           </li>
           <li>
             <strong className="font-semibold text-kol">
-              Icke-nödvändiga cookies (marknadsföring/attribution)
+              Icke-nödvändiga cookies (statistik/marknadsföring/attribution)
             </strong>{" "}
-            — en UTM-cookie som kommer ihåg vilken kampanj eller källa du
+            — Google Analytics (_ga-cookies för anonym besöksstatistik) samt
+            en UTM-cookie som kommer ihåg vilken kampanj eller källa du
             kom från. Den är inte nödvändig för att sajten eller ditt köp
             ska fungera, och sätts därför bara om du aktivt godkänt det i
-            cookie-bannern. Tackar du nej sätts ingen sådan cookie, och
+            cookie-bannern. Tackar du nej laddas inte Google Analytics och ingen sådan cookie sätts, och
             eventuella tillfälligt mellanlagrade uppgifter raderas.
           </li>
         </ul>

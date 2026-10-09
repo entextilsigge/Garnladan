@@ -37,9 +37,12 @@ export function middleware(request: NextRequest) {
     // kod som kan köras, så 'unsafe-inline' här är en annan risknivå än i
     // script-src.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://*.public.blob.vercel-storage.com",
+    "img-src 'self' data: https://*.public.blob.vercel-storage.com https://*.google-analytics.com https://*.googletagmanager.com",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.stripe.com",
+    // Google Analytics 4 (laddas först efter cookiesamtycke, se
+    // components/GoogleAnalytics.tsx). Själva gtag.js tillåts via
+    // 'strict-dynamic' ovan; här behövs bara mätanropen.
+    "connect-src 'self' https://api.stripe.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
     "frame-src https://js.stripe.com https://hooks.stripe.com",
     "object-src 'none'",
     "base-uri 'self'",
