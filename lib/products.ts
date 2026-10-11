@@ -16,6 +16,7 @@ export type Fiber =
   | "bomull"
   | "lin"
   | "akryl"
+  | "polyester"
   | "polyamid"
   | "viskos"
   | "alpacka"
@@ -163,6 +164,7 @@ export const FIBER_LABELS: Record<Fiber, string> = {
   bomull: "Bomull",
   lin: "Lin",
   akryl: "Akryl",
+  polyester: "Polyester",
   polyamid: "Polyamid",
   viskos: "Viskos",
   alpacka: "Alpacka",

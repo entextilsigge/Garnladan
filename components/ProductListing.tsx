@@ -28,7 +28,7 @@ const MATERIAL_FILTERS: { label: string; fibers: Fiber[] }[] = [
   { label: "Ull & merino", fibers: ["ull", "merino"] },
   { label: "Bomull", fibers: ["bomull"] },
   { label: "Lin", fibers: ["lin"] },
-  { label: "Syntet & blandmaterial", fibers: ["akryl", "polyamid", "viskos"] },
+  { label: "Syntet & blandmaterial", fibers: ["akryl", "polyester", "polyamid", "viskos"] },
   { label: "Alpacka", fibers: ["alpacka"] },
   { label: "Mohair & silke", fibers: ["mohair", "silke"] },
   { label: "Kashmir", fibers: ["kashmir"] },
