@@ -29,7 +29,7 @@ type GtagWindow = Window &
 let loaded = false;
 
 function loadGa(id: string) {
-  const w = window as GtagWindow;
+  const w = window as unknown as GtagWindow;
   w[`ga-disable-${id}`] = false;
   if (loaded) return;
   loaded = true;
@@ -50,7 +50,7 @@ function loadGa(id: string) {
 }
 
 function disableGa(id: string) {
-  const w = window as GtagWindow;
+  const w = window as unknown as GtagWindow;
   // Officiell opt-out-flagga: stoppar all vidare mätning i den här fliken.
   w[`ga-disable-${id}`] = true;
 
